@@ -24,8 +24,9 @@ __attribute__ ((__const__))
 double lerp(double x0, double x1, double y0, double y1, double x);
 
 /*
-The call `hermite(n, x)` evaluates the `n`th Hermite polynomial at `x`.
-Note that function is only defined when `0 <= n < 8` holds.
+The call `hermite(n, x)` returns the value
+of the `n`th Hermite polynomial at `x`.
+Note that the function is only defined when `0 <= n < 8`.
 */
 __attribute__ ((__const__))
 double hermite(unsigned int n, double x);

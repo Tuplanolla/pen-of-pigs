@@ -1,14 +1,20 @@
-#include "floating.h"
+#include "he4.h"
+#include "qho.h"
 #include "report.h"
-#include <gsl/gsl_math.h>
 #include <stdlib.h>
-#include <unistd.h>
 
-int main(int const off_by_one, char** const mutable_storage) {
+/* int main(int const n, char** const xs) { */
+int main(void) {
   reset();
-  warn(main);
-  unsigned int ok = sleep(1);
-  warn(main);
 
-  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+  bool const p =
+#ifdef PEN_OF_HE4
+    he4() &&
+#endif
+#ifdef PEN_OF_QHO
+    qho() &&
+#endif
+    true;
+
+  return p ? EXIT_SUCCESS : EXIT_FAILURE;
 }

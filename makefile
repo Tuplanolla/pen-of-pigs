@@ -26,12 +26,12 @@ endif
 
 jobflags=
 
-ifeq ($(JOB), qho)
-jobflags=-DPEN_OF_QHO
-endif
-
 ifeq ($(JOB), he4)
 jobflags=-DPEN_OF_HE4
+endif
+
+ifeq ($(JOB), qho)
+jobflags=-DPEN_OF_QHO
 endif
 
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` \
@@ -40,6 +40,7 @@ LDLIBS=-lm `pkg-config --libs gsl`
 
 run: build
 	./pen-of-pigs
+	gnuplot -p qho-ensemble.gp
 
 check: build
 	valgrind --leak-check=full --tool=memcheck ./pen-of-pigs
@@ -52,7 +53,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-pen-of-pigs: main.o floating.o report.o size.o timepack.o
+pen-of-pigs: he4.o main.o floating.o qho.o report.o size.o timepack.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

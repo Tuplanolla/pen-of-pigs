@@ -1,5 +1,5 @@
-#ifndef TROUBLE_H
-#define TROUBLE_H
+#ifndef REPORT_H
+#define REPORT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -37,10 +37,10 @@ which may be reset in the process.
 
 The format of the error message consists of
 
-* `"[time]"` and `"(pid)"`, mimicking dmesg;
-* `"<procedure>"`, mimicking objdump;
-* `"file:line: message"`, mimicking cc and
-* `"procedure: message"`, mimicking perror.
+* `"[time]"` and `"(pid)"`, mimicking `dmesg`;
+* `"<procedure>"`, mimicking `objdump`;
+* `"file:line: message"`, mimicking `cc` and
+* `"procedure: message"`, mimicking `perror`.
 */
 #define warn(p) BEGIN \
   warn_with(__func__, __FILE__, (size_t) __LINE__, (p) == NULL ? NULL : #p); \
