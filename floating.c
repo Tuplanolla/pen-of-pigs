@@ -1,9 +1,18 @@
 #include "floating.h"
 #include "report.h"
 #include <gsl/gsl_math.h>
+#include <math.h>
 
 int cmp(double const x, double const y) {
   return x < y ? -1 : x > y ? 1 : 0;
+}
+
+double wrap(double const x, double const y) {
+  return fmod(y + fmod(x, y), y);
+}
+
+double midpoint(double const x, double const y) {
+  return (x + y) / 2;
 }
 
 double lerp(double const x0, double const x1,

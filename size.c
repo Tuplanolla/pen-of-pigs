@@ -5,6 +5,10 @@ int size_cmp(size_t const x, size_t const y) {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
+size_t size_wrap(size_t const x, size_t const y) {
+  return (y + (x % y)) % y;
+}
+
 size_t size_min(size_t const x, size_t const y) {
   return x < y ? x : y;
 }

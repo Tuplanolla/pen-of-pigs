@@ -15,6 +15,13 @@ __attribute__ ((__const__))
 int size_cmp(size_t x, size_t y);
 
 /*
+The call `size_wrap(x, y)` returns such `z` that
+`0 <= z < y` and `z = x - n * y` for some integer `n`.
+*/
+__attribute__ ((__const__))
+size_t size_wrap(size_t x, size_t y);
+
+/*
 The call `size_min(x, y)` returns the lesser of `x` and `y`.
 */
 __attribute__ ((__const__))

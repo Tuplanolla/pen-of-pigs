@@ -1,7 +1,9 @@
 #include "floating.h"
 #include "report.h"
+#include "size.h"
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +23,9 @@ struct poly {
 };
 
 struct ensemble {
+  gsl_rng* rng;
+  double lambda;
+  double tau;
   struct poly polys[NPOLY];
 };
 
@@ -43,17 +48,60 @@ double denmat() {
 
 */
 
+static void bisectmv(struct ensemble* const ens,
+    size_t const ipoly, size_t const ibead) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim) {
+    /*
+    r = gsl_ran_gaussian(rng, sqrt(ens.lambda * ens.tau)) +
+      midpoint(ens.polys[ipoly].beads[size_wrap(ibead - 1)].coords[idim],
+          ens.polys[ipoly].beads[size_wrap(ibead + 1)].coords[idim]);
+    ens.polys[ipoly].beads[ibead].coords[idim] = ...;
+    */
+  }
+}
+
+static void mlevmv(struct ensemble* const ens,
+    size_t const ipoly, size_t const ibead, size_t const nlev) {
+}
+
+static void displmv(struct ensemble* const ens, size_t const ipoly) {
+}
+
+static double Kthing(struct ensemble* const ens,
+    size_t const ipoly, size_t const ibead) {
+  double const cse = 2 * lambda * tau;
+
+  return -(d * N / 2) * log(M_2PI * cse)
+    + gsl_pow_2(length(R[m - 1] - R[m])) / (2 * cse);
+}
+
+// prim approx
+static double Uthing(struct ensemble* const ens,
+    size_t const ipoly, size_t const ibead) {
+  return (tau / 2) * (V(R[m - 1]) + V(R[m]));
+}
+
+// prim approx also
+static double Sthing(struct ensemble* const ens,
+    size_t const ipoly, size_t const ibead) {
+  return Kthing(ens, ipoly, ibead) + Uthing(ens, ipoly, ibead);
+}
+
 bool qho(void) {
-  struct ensemble ens = {
-  };
-  struct napkin nk = {
-  };
+  struct ensemble ens;
+  struct napkin nk;
 
   /* p. 44 */
 
   gsl_rng_env_setup();
 
-  gsl_rng* const rng = gsl_rng_alloc(gsl_rng_mt19937);
+  ens.rng = gsl_rng_alloc(gsl_rng_mt19937);
+
+  ens.lambda = NAN; // hbar^2 / 2 m
+
+  ens.tau = NAN; // beta / M
 
   for (size_t ipoly = 0;
       ipoly < NPOLY;
@@ -81,8 +129,10 @@ bool qho(void) {
         ibead < NBEAD;
         ++ibead) {
       struct pos xy = ens.polys[ipoly].beads[ibead];
+
       fprintf(ensfp, "%zu %f %f\n", ibead, xy.coords[0], xy.coords[1]);
     }
+
     fprintf(ensfp, "\n");
   }
 

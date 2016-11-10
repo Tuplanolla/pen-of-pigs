@@ -16,6 +16,19 @@ __attribute__ ((__const__))
 int cmp(double x, double y);
 
 /*
+The call `wrap(x, y)` returns such `z` that
+`0 <= z < y` and `z = x - n * y` for some integer `n`.
+*/
+__attribute__ ((__const__))
+double wrap(double x, double y);
+
+/*
+The call `midpoint(x, y)` returns the mean of `x` and `y`.
+*/
+__attribute__ ((__const__))
+double midpoint(double x, double y);
+
+/*
 The call `lerp(x0, x1, y0, y1, x)` returns the solution
 for `y` in the linear interpolation equation
 `(x - x0) / (x1 - x0) == (y - y0) / (y1 - y0)`.
