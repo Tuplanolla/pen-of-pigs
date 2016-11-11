@@ -17,6 +17,15 @@ size_t size_max(size_t const x, size_t const y) {
   return x > y ? x : y;
 }
 
+size_div_t size_div(size_t const x, size_t const y) {
+  size_div_t const z = {
+    .quot = x / y,
+    .rem = x % y
+  };
+
+  return z;
+}
+
 size_t size_pow(size_t const x, size_t const y) {
   size_t z = 1;
 

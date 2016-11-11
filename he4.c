@@ -1,6 +1,5 @@
-#include "he4.h"
-#include <stdbool.h>
+#include <stdlib.h>
 
-bool he4(void) {
-  return false;
+int main(int const n, char** const xs) {
+  return EXIT_FAILURE;
 }

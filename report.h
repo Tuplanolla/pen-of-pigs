@@ -2,7 +2,7 @@
 #define REPORT_H
 
 #include <stdbool.h>
-#include <stddef.h>
+#include <stdlib.h>
 
 /*
 The preprocessor directives `BEGIN` and `END` allow converting

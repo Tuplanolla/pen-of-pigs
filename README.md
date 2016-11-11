@@ -7,7 +7,7 @@ You can compile and run the program as follows.
 
 Options exist.
 
-    $ make CC=clang TARGET=debug JOB=qho clean build
+    $ make CC=clang CONFIG=debug clean build
 
 The available targets are
 

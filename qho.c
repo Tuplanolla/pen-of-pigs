@@ -1,37 +1,46 @@
 #include "floating.h"
+#include "nth.h"
 #include "report.h"
 #include "size.h"
 #include <gsl/gsl_math.h>
-#include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+#include <gsl/gsl_rng.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#define NDIM 2
-#define NPOLY 3
-#define NBEAD 4
+#define NDIM 3
+#define NPOLY 32
+#define NBEAD 42
 #define NSTEP 12
 
-struct pos {
-  double coords[NDIM];
+static double const hbar = 1;
+
+struct bead {
+  double d[NDIM];
 };
 
 struct poly {
-  struct pos beads[NBEAD];
-};
-
-struct ensemble {
-  gsl_rng* rng;
-  double lambda;
-  double tau;
-  struct poly polys[NPOLY];
+  struct bead r[NBEAD];
 };
 
 struct napkin {
+  gsl_rng* rng;
+  double m;
+  double L;
+  double lambda;
+  double tau;
+  struct poly R[NPOLY];
+};
+
+struct paper {
   double energy;
 };
+
+static struct napkin napkin;
+
+static struct paper paper;
 
 /*
 
@@ -48,61 +57,10 @@ double denmat() {
 
 */
 
-static void bisectmv(struct ensemble* const ens,
-    size_t const ipoly, size_t const ibead) {
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim) {
-    /*
-    r = gsl_ran_gaussian(rng, sqrt(ens.lambda * ens.tau)) +
-      midpoint(ens.polys[ipoly].beads[size_wrap(ibead - 1)].coords[idim],
-          ens.polys[ipoly].beads[size_wrap(ibead + 1)].coords[idim]);
-    ens.polys[ipoly].beads[ibead].coords[idim] = ...;
-    */
-  }
-}
-
-static void mlevmv(struct ensemble* const ens,
-    size_t const ipoly, size_t const ibead, size_t const nlev) {
-}
-
-static void displmv(struct ensemble* const ens, size_t const ipoly) {
-}
-
-static double Kthing(struct ensemble* const ens,
-    size_t const ipoly, size_t const ibead) {
-  double const cse = 2 * lambda * tau;
-
-  return -(d * N / 2) * log(M_2PI * cse)
-    + gsl_pow_2(length(R[m - 1] - R[m])) / (2 * cse);
-}
-
-// prim approx
-static double Uthing(struct ensemble* const ens,
-    size_t const ipoly, size_t const ibead) {
-  return (tau / 2) * (V(R[m - 1]) + V(R[m]));
-}
-
-// prim approx also
-static double Sthing(struct ensemble* const ens,
-    size_t const ipoly, size_t const ibead) {
-  return Kthing(ens, ipoly, ibead) + Uthing(ens, ipoly, ibead);
-}
-
-bool qho(void) {
-  struct ensemble ens;
-  struct napkin nk;
-
-  /* p. 44 */
-
-  gsl_rng_env_setup();
-
-  ens.rng = gsl_rng_alloc(gsl_rng_mt19937);
-
-  ens.lambda = NAN; // hbar^2 / 2 m
-
-  ens.tau = NAN; // beta / M
-
+/*
+Random initial configuration.
+*/
+static void randconf(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly)
@@ -112,14 +70,150 @@ bool qho(void) {
       for (size_t idim = 0;
           idim < NDIM;
           ++idim)
-        ens.polys[ipoly].beads[ibead].coords[idim] = gsl_rng_uniform(rng);
+        napkin.R[ipoly].r[ibead].d[idim] =
+          gsl_ran_flat(napkin.rng, 0, napkin.L);
+}
 
-  FILE* const ensfp = fopen("qho-ensemble.data", "w");
-  if (ensfp == NULL)
+/*
+Random lattice initial configuration.
+*/
+static void rlatconf(void) {
+  double const w = ceil(pow(NPOLY, 1.0 / NDIM));
+  double const v = napkin.L / w;
+  size_t const n = (size_t) w;
+
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead) {
+      size_t m = ipoly;
+
+      for (size_t idim = 0;
+          idim < NDIM;
+          ++idim) {
+        size_div_t const z = size_div(m, n);
+
+        napkin.R[ipoly].r[ibead].d[idim] =
+          (double) z.rem * v + gsl_ran_flat(napkin.rng, 0, v);
+        m = z.quot;
+      }
+    }
+}
+
+/*
+Circular lattice initial configuration.
+*/
+static void clatconf(void) {
+  double const w = ceil(pow(NPOLY, 1.0 / NDIM));
+  double const v = napkin.L / w;
+  size_t const n = (size_t) w;
+
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead) {
+      double const t = (double) ibead / NBEAD;
+
+      size_t m = ipoly;
+
+      for (size_t idim = 0;
+          idim < NDIM;
+          ++idim) {
+        size_div_t const p = size_div(idim, 2);
+        double const s = (p.rem == 0 ? cos : sin)((double) (nth_prime(p.quot)) * M_2PI * t) / 2;
+
+        size_div_t const z = size_div(m, n);
+        napkin.R[ipoly].r[ibead].d[idim] = ((double) z.rem + (1 + s) / 2) * v;
+        m = z.quot;
+      }
+    }
+}
+
+double sample(gsl_rng* const rng, double* const xs, size_t const n) {
+  double x;
+  gsl_ran_sample(rng, &x, 1, xs, n, sizeof x);
+  return x;
+}
+
+static void bisectmv(size_t const ipoly, size_t const ibead) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim) {
+    napkin.R[ipoly].r[ibead].d[idim] =
+      gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau)) +
+      midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
+          napkin.R[ipoly].r[size_wrap(ibead + 1, NBEAD)].d[idim]);
+  }
+}
+
+static void mullevmv(size_t const ipoly, size_t const ibead, size_t const nlev) {
+}
+
+static void displmv(size_t const ipoly) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim) {
+    double const r =
+      gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau));
+
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead)
+      napkin.R[ipoly].r[ibead].d[idim] += r;
+  }
+}
+
+/*
+
+static double Kthing(size_t const ipoly, size_t const ibead) {
+  double const cse = 2 * lambda * tau;
+
+  return -(d * N / 2) * log(M_2PI * cse)
+    + gsl_pow_2(length(R[m - 1] - R[m])) / (2 * cse);
+}
+
+// prim approx
+static double Uthing(size_t const ipoly, size_t const ibead) {
+  return (tau / 2) * (V(R[m - 1]) + V(R[m]));
+}
+
+// prim approx also
+// but wrong
+static double Sthing(size_t const ipoly, size_t const ibead) {
+  return Kthing(napkin, ipoly, ibead) + Uthing(napkin, ipoly, ibead);
+}
+
+*/
+
+static bool qho(void) {
+  /* p. 44 */
+
+  gsl_rng_env_setup();
+
+  napkin.L = 5;
+
+  napkin.m = 1;
+
+  napkin.rng = gsl_rng_alloc(gsl_rng_mt19937);
+
+  napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
+
+  napkin.tau = NAN; // beta / M
+
+  // randconf();
+  // rlatconf();
+  clatconf();
+
+  FILE* const ensemfp = fopen("qho-ensemble.data", "w");
+  if (ensemfp == NULL)
     halt(fopen);
 
-  FILE* const napfp = fopen("qho-napkin.data", "w");
-  if (napfp == NULL)
+  FILE* const napkinfp = fopen("qho-napkin.data", "w");
+  if (napkinfp == NULL)
     halt(fopen);
 
   for (size_t ipoly = 0;
@@ -128,19 +222,30 @@ bool qho(void) {
     for (size_t ibead = 0;
         ibead < NBEAD;
         ++ibead) {
-      struct pos xy = ens.polys[ipoly].beads[ibead];
+      fprintf(ensemfp, "%zu", ibead);
 
-      fprintf(ensfp, "%zu %f %f\n", ibead, xy.coords[0], xy.coords[1]);
+      for (size_t idim = 0;
+          idim < NDIM;
+          ++idim)
+        fprintf(ensemfp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
+
+      fprintf(ensemfp, "\n");
     }
 
-    fprintf(ensfp, "\n");
+    fprintf(ensemfp, "\n");
   }
 
-  fclose(napfp);
+  fclose(napkinfp);
 
-  fclose(ensfp);
+  fclose(ensemfp);
 
-  gsl_rng_free(rng);
+  gsl_rng_free(napkin.rng);
 
   return true;
+}
+
+int main(void) {
+  reset();
+  warn(reset);
+  return qho() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
