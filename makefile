@@ -29,6 +29,7 @@ LDLIBS=-lm `pkg-config --libs gsl`
 
 run: build
 	./qho
+	# gnuplot -p qho-ensemble-2d.gp
 	gnuplot -p qho-ensemble-3d.gp
 
 check: build

@@ -5,10 +5,8 @@
 #include <stddef.h>
 
 /*
-The call `nth_prime(n)` returns
-the `n`th prime number if `1 <= n < m` where
-`m` is the smallest guaranteed `UINT_MAX` or
-`1` if `n == 0`.
+The call `p = nth_prime(n)` returns the `(n + 1)`th prime number
+if `0 <= p < m` and `m` is the smallest guaranteed `UINT_MAX`.
 */
 __attribute__ ((__const__))
 unsigned int nth_prime(size_t n);

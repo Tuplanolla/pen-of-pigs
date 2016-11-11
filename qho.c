@@ -102,6 +102,14 @@ static void rlatconf(void) {
     }
 }
 
+static double ljfreq(size_t const n) {
+  return M_2PI * (double) (n < 2 ? 1 : nth_prime(n - 2));
+}
+
+static double ljphase(size_t const n) {
+  return (M_2PI / 2) * ((double) n / NDIM);
+}
+
 /*
 Circular lattice initial configuration.
 */
@@ -123,8 +131,42 @@ static void clatconf(void) {
       for (size_t idim = 0;
           idim < NDIM;
           ++idim) {
-        size_div_t const p = size_div(idim, 2);
-        double const s = (p.rem == 0 ? cos : sin)((double) (nth_prime(p.quot)) * M_2PI * t) / 2;
+        /*
+        d[i] = sincos(n[i] * M_2PI * t + k[i] * M_PI)
+        n[i] -- prime (rel-coprime)
+        n[i] * k[j] - n[j] * k[i] -- not integer
+        ----
+        Example for 3.
+        p[0] * k[1] - p[1] * k[0] -- not integer
+        p[0] * k[2] - p[2] * k[0] -- not integer
+        p[1] * k[2] - p[2] * k[1] -- not integer
+        ----
+        So let n be primes p.
+        p[i] * k[j] - p[j] * k[i] -- not integer
+        ----
+        Further example for 3.
+        1 * k[1] - 2 * k[0] -- not integer
+        1 * k[2] - 3 * k[0] -- not integer
+        2 * k[2] - 3 * k[1] -- not integer
+        ----
+        Symmetry cancels half of combinations, so assume j > i.
+        Require k[0] = 0; solve k[j] for k[i].
+        ----
+        More example for 3.
+        k[1] -- not integer
+        k[2] -- not integer
+        2 * k[2] - 3 * k[1] -- not integer
+        Choose thirds.
+        1 / 3 -- not integer
+        2 / 3 -- not integer
+        4 / 3 - 1 -- not integer
+        Works, but only for dims >= 3.
+        ----
+        Notice that a multiset of 1s is coprime.
+        Exploiting this allows solution for dim = 2.
+        There is no solution for dim = 1.
+        */
+        double const s = sin(ljfreq(idim) * t + ljphase(idim)) / 2;
 
         size_div_t const z = size_div(m, n);
         napkin.R[ipoly].r[ibead].d[idim] = ((double) z.rem + (1 + s) / 2) * v;
