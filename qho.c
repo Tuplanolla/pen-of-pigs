@@ -4,15 +4,17 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #define NDIM 2
-#define NPOLY 32
-#define NBEAD 42
-#define NSTEP 12
+#define NPOLY 4
+#define NBEAD 8
+#define NSTEP 256
+#define NTSTEP 8
 
 static double const hbar = 1;
 
@@ -21,13 +23,18 @@ struct bead {
 };
 
 struct poly {
+  size_t i;
   struct bead r[NBEAD];
 };
 
 struct napkin {
   gsl_rng* rng;
+  size_t accepted;
+  size_t rejected;
+  double dx;
   double m;
   double L;
+  double beta;
   double lambda;
   double tau;
   struct poly R[NPOLY];
@@ -54,15 +61,23 @@ double denmat() {
   return integral(exp(-sum(action())));
 }
 
+double sample(gsl_rng* const rng, double* const xs, size_t const n) {
+  double x;
+  gsl_ran_sample(rng, &x, 1, xs, n, sizeof x);
+  return x;
+}
+
 */
 
 /*
 Random initial configuration.
 */
-static void randconf(void) {
+static void rconf(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
-      ++ipoly)
+      ++ipoly) {
+    napkin.R[ipoly].i = ipoly;
+
     for (size_t ibead = 0;
         ibead < NBEAD;
         ++ibead)
@@ -71,6 +86,29 @@ static void randconf(void) {
           ++idim)
         napkin.R[ipoly].r[ibead].d[idim] =
           gsl_ran_flat(napkin.rng, 0, napkin.L);
+  }
+}
+
+/*
+Random point initial configuration.
+*/
+static void rpconf(void) {
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly) {
+    napkin.R[ipoly].i = ipoly;
+
+    for (size_t idim = 0;
+        idim < NDIM;
+        ++idim) {
+      double const x = gsl_ran_flat(napkin.rng, 0, napkin.L);
+
+      for (size_t ibead = 0;
+          ibead < NBEAD;
+          ++ibead)
+        napkin.R[ipoly].r[ibead].d[idim] = x;
+    }
+  }
 }
 
 /*
@@ -83,7 +121,9 @@ static void rlatconf(void) {
 
   for (size_t ipoly = 0;
       ipoly < NPOLY;
-      ++ipoly)
+      ++ipoly) {
+    napkin.R[ipoly].i = ipoly;
+
     for (size_t ibead = 0;
         ibead < NBEAD;
         ++ibead) {
@@ -99,10 +139,42 @@ static void rlatconf(void) {
         m = z.quot;
       }
     }
+  }
 }
 
 /*
-Circular lattice initial configuration.
+Point lattice initial configuration.
+*/
+static void platconf(void) {
+  double const w = ceil(pow(NPOLY, 1.0 / NDIM));
+  double const v = napkin.L / w;
+  size_t const n = (size_t) w;
+
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly) {
+    napkin.R[ipoly].i = ipoly;
+
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead) {
+      size_t m = ipoly;
+
+      for (size_t idim = 0;
+          idim < NDIM;
+          ++idim) {
+        size_div_t const z = size_div(m, n);
+
+        napkin.R[ipoly].r[ibead].d[idim] = (double) z.rem * v;
+        m = z.quot;
+      }
+    }
+  }
+}
+
+/*
+Circle lattice initial configuration.
+The equations are based on the theory of Lissajous knots.
 */
 static void clatconf(void) {
   double const w = ceil(pow(NPOLY, 1.0 / NDIM));
@@ -111,7 +183,9 @@ static void clatconf(void) {
 
   for (size_t ipoly = 0;
       ipoly < NPOLY;
-      ++ipoly)
+      ++ipoly) {
+    napkin.R[ipoly].i = ipoly;
+
     for (size_t ibead = 0;
         ibead < NBEAD;
         ++ibead) {
@@ -130,12 +204,88 @@ static void clatconf(void) {
         m = z.quot;
       }
     }
+  }
 }
 
-double sample(gsl_rng* const rng, double* const xs, size_t const n) {
-  double x;
-  gsl_ran_sample(rng, &x, 1, xs, n, sizeof x);
-  return x;
+/*
+Close the current configuration.
+*/
+static void closec(void) {
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    napkin.R[ipoly].i = ipoly;
+}
+
+/*
+Open the current configuration.
+*/
+static void openc(void) {
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    napkin.R[ipoly].i = SIZE_MAX;
+}
+
+/*
+Print bead into stream `fp`.
+*/
+static void dispbead(FILE* const fp,
+    size_t const iindex, size_t const ipoly, size_t const ibead) {
+  fprintf(fp, "%zu", iindex);
+
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim)
+    fprintf(fp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
+
+  fprintf(fp, "\n");
+}
+
+/*
+Print polymer into stream `fp`.
+*/
+static void disppoly(FILE* const fp) {
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly) {
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead)
+      dispbead(fp, ibead, ipoly, ibead);
+
+    if (napkin.R[ipoly].i != SIZE_MAX)
+      dispbead(fp, NBEAD, napkin.R[ipoly].i, 0);
+
+    fprintf(fp, "\n");
+  }
+}
+
+/*
+Print trial displacement into stream `fp`.
+*/
+static void dispdisp(FILE* const fp) {
+  fprintf(fp, "%f\n", napkin.dx);
+}
+
+static void trialmv(size_t const ipoly, size_t const ibead) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim) {
+    napkin.R[ipoly].r[ibead].d[idim] = wrap(
+        napkin.R[ipoly].r[ibead].d[idim] +
+        napkin.dx * gsl_ran_flat(napkin.rng, -1, 1),
+      napkin.L);
+  }
+  // Displacement adjustment test...
+  ++napkin.accepted;
+  ++napkin.rejected;
+  napkin.accepted += (size_t) gsl_rng_uniform_int(napkin.rng, 257);
+  napkin.rejected += (size_t) gsl_rng_uniform_int(napkin.rng, 242);
+}
+
+static void adjustdx(void) {
+  napkin.dx *= (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
 }
 
 static void bisectmv(size_t const ipoly, size_t const ibead) {
@@ -194,49 +344,47 @@ static bool qho(void) {
   gsl_rng_env_setup();
 
   napkin.L = 5;
-
   napkin.m = 1;
+  napkin.dx = 1;
+  napkin.beta = 1;
 
   napkin.rng = gsl_rng_alloc(gsl_rng_mt19937);
 
   napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
 
-  napkin.tau = NAN; // beta / M
+  napkin.tau = napkin.beta / NBEAD;
 
-  // randconf();
-  // rlatconf();
   clatconf();
 
-  FILE* const ensemfp = fopen("qho-ensemble.data", "w");
-  if (ensemfp == NULL)
+  FILE* const dispfp = fopen("qho-displacement.data", "w");
+  if (dispfp == NULL)
     halt(fopen);
 
-  FILE* const napkinfp = fopen("qho-napkin.data", "w");
-  if (napkinfp == NULL)
-    halt(fopen);
+  for (size_t istep = 0;
+      istep < NSTEP;
+      ++istep) {
+    trialmv((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
+        (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
+    if (istep > NTSTEP)
+      ;
+    adjustdx();
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead) {
-      fprintf(ensemfp, "%zu", ibead);
-
-      for (size_t idim = 0;
-          idim < NDIM;
-          ++idim)
-        fprintf(ensemfp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
-
-      fprintf(ensemfp, "\n");
-    }
-
-    fprintf(ensemfp, "\n");
+    dispdisp(dispfp);
   }
 
-  fclose(napkinfp);
+  // Closing index exchange test...
+  napkin.R[0].i = 2;
+  napkin.R[2].i = 0;
 
-  fclose(ensemfp);
+  fclose(dispfp);
+
+  FILE* const fp = fopen("qho-ensemble.data", "w");
+  if (fp == NULL)
+    halt(fopen);
+
+  disppoly(fp);
+
+  fclose(fp);
 
   gsl_rng_free(napkin.rng);
 
