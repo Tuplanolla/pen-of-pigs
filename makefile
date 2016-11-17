@@ -2,17 +2,17 @@ flags=
 
 ifeq ($(CC), clang)
 ifeq ($(CONFIG), debug)
-flags=-O0 -g -Weverything \
+flags=-DDEBUG -O0 -g -Weverything \
 	-Wno-covered-switch-default -Wno-unused-macros
 endif
 ifeq ($(CONFIG), release)
-flags=-Ofast -Wl,-s -w
+flags=-DNDEBUG -Ofast -Wl,-s -w
 endif
 endif
 
 ifeq ($(CC), gcc)
 ifeq ($(CONFIG), debug)
-flags=-O0 -g `cat gcc-$$(./gcc-version | tr . _)-release` \
+flags=-DDEBUG -O0 -g `cat gcc-$$(./gcc-version | tr . _)-release` \
 	-Wno-error -Wno-fatal-errors -Wno-system-headers \
 	-Wno-c++-compat -Wno-declaration-after-statement \
 	-Wno-traditional -Wno-traditional-conversion \
@@ -20,7 +20,7 @@ flags=-O0 -g `cat gcc-$$(./gcc-version | tr . _)-release` \
 	-Wno-address
 endif
 ifeq ($(CONFIG), release)
-flags=-Ofast -s -w
+flags=-DNDEBUG -Ofast -s -w
 endif
 endif
 

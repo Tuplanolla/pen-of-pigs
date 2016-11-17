@@ -1,9 +1,11 @@
 #include "floating.h"
 #include "report.h"
 #include "size.h"
+#include <assert.h>
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -13,8 +15,9 @@
 #define NDIM 2
 #define NPOLY 4
 #define NBEAD 8
-#define NSTEP 256
-#define NTSTEP 8
+#define NTSTEP 16
+#define NPSTEP 256
+#define NRSTEP 100
 
 static double const hbar = 1;
 
@@ -338,8 +341,24 @@ static double Sthing(size_t const ipoly, size_t const ibead) {
 
 */
 
-static bool qho(void) {
+static void work(void) {
+  trialmv((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
+      (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
+
+  // Compute the diffence in potential action between the new and old config
+
+  // Accept or reject
+
+  adjustdx();
+}
+
+int main(void) {
   /* p. 44 */
+
+  reset();
+
+  assert(NRSTEP <= NPSTEP);
+  assert(NPSTEP <= (size_t) 1 << CHAR_BIT * sizeof (size_t) / 2);
 
   gsl_rng_env_setup();
 
@@ -360,16 +379,26 @@ static bool qho(void) {
   if (dispfp == NULL)
     halt(fopen);
 
-  for (size_t istep = 0;
-      istep < NSTEP;
-      ++istep) {
-    trialmv((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
-        (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
-    if (istep > NTSTEP)
-      ;
-    adjustdx();
+  // Thermalize.
+  for (size_t itstep = 0;
+      itstep < NTSTEP;
+      ++itstep)
+    work();
 
-    dispdisp(dispfp);
+  // Work productively.
+  for (size_t ipstep = 0, irstep = 0;
+      ipstep < NPSTEP;
+      ++ipstep) {
+    work();
+
+    // Update paper with estimators
+
+    if (NRSTEP * ipstep > NPSTEP * irstep) {
+      // Save results into files
+      dispdisp(dispfp);
+
+      ++irstep;
+    }
   }
 
   // Closing index exchange test...
@@ -388,11 +417,5 @@ static bool qho(void) {
 
   gsl_rng_free(napkin.rng);
 
-  return true;
-}
-
-int main(void) {
-  reset();
-  warn(reset);
-  return qho() ? EXIT_SUCCESS : EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }
