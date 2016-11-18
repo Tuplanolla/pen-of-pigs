@@ -30,7 +30,7 @@ CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
 
 run: build
-	./qho
+	time -v ./qho
 	gnuplot -p qho-ensemble-2d.gp
 	# gnuplot -p qho-ensemble-3d.gp
 
@@ -45,7 +45,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: floating.o nth.o qho.o report.o size.o timepack.o
+qho: badtime.o floating.o nth.o qho.o report.o size.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

@@ -1,5 +1,5 @@
-#ifndef TIMEPACK_H
-#define TIMEPACK_H
+#ifndef BADTIME_H
+#define BADTIME_H
 
 #include "exts.h"
 #include <sys/time.h>
@@ -32,5 +32,11 @@ the approximate number of seconds in the time structure `tp`.
 */
 __attribute__ ((__nonnull__))
 double unpack_timespec(struct timespec const* const tp);
+
+/*
+The call `now()` returns
+the approximate time right now or `NAN` on error.
+*/
+double now(void);
 
 #endif

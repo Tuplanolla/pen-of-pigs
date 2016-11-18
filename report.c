@@ -1,7 +1,6 @@
+#include "badtime.h"
 #include "report.h"
-#include "timepack.h"
 #include <errno.h>
-#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <time.h>
@@ -9,14 +8,8 @@
 
 static double t0 = 0;
 
-static double t(void) {
-  struct timespec tp;
-  return clock_gettime(CLOCK_MONOTONIC, &tp) == -1 ?
-    (double) NAN : unpack_timespec(&tp);
-}
-
 void reset(void) {
-  t0 = t();
+  t0 = now();
 }
 
 /*
@@ -31,7 +24,7 @@ void warn_with(char const* const func, char const* const file,
     size_t const line, char const* const s) {
   int const n = errno;
 
-  double const t1 = t();
+  double const t1 = now();
 
   if (fprintf(stderr, "[%f] (%zu) <%s> %s:%zu: ",
       t1 - t0, (size_t) getpid(), func, file, line) != EOF) {

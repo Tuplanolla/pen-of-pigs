@@ -1,3 +1,4 @@
+#include "badtime.h"
 #include "floating.h"
 #include "report.h"
 #include "size.h"
@@ -18,19 +19,16 @@
 #define NPOLY 4
 #define NBEAD 8
 #define NTSTEP 16
-#define NPSTEP 256
+#define NPSTEP (1 << 20)
 #define NRSTEP 100
 
-static_assert(NRSTEP <= NPSTEP,
-    "too many recording steps");
-
-// This is just a static version of `assert(NPSTEP <= sqrt(SIZE_MAX))`.
-static_assert(NPSTEP <= (size_t) 1 << CHAR_BIT * sizeof (size_t) / 2,
-    "too many production steps");
-
-// Constants () ---------------------------------------------------------------
-
-static double const hbar = 1;
+/*
+These assertions guarantee that adding or multiplying two steps or indices
+never wraps around, which makes their manipulation easier.
+*/
+static_assert(NTSTEP <= SQRT_SIZE_MAX, "too many thermalization steps");
+static_assert(NPSTEP <= SQRT_SIZE_MAX, "too many production steps");
+static_assert(NRSTEP <= NPSTEP, "too many recording steps");
 
 // Types () -------------------------------------------------------------------
 
@@ -55,6 +53,8 @@ union hist {
 };
 
 struct napkin {
+  double dt;
+  double t0;
   gsl_rng* rng;
   size_t accepted;
   size_t rejected;
@@ -78,6 +78,39 @@ struct paper {
 static struct napkin napkin;
 
 static struct paper paper;
+
+// Vector Math (??) -----------------------------------------------------------
+
+static void add(double* const d,
+    double const* const d0, double const* const d1) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim)
+    d[idim] = d0[idim] + d1[idim];
+}
+
+static void sub(double* const d,
+    double const* const d0, double const* const d1) {
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim)
+    d[idim] = d1[idim] - d0[idim];
+}
+
+static double normsq(double const* const d) {
+  double s = 0;
+
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim)
+    s += gsl_pow_2(d[idim]);
+
+  return s;
+}
+
+static double norm(double const* const d) {
+  return sqrt(normsq(d));
+}
 
 // Initial Configurations (conf) ----------------------------------------------
 
@@ -284,6 +317,18 @@ static void dispdisp(FILE* const fp) {
   fprintf(fp, "%f\n", napkin.dx);
 }
 
+// Saving into Data Files (save)
+
+static void save_esl(void) {
+  FILE* const fp = fopen("qho-ensemble.data", "w");
+  if (fp == NULL)
+    halt(fopen);
+
+  disp_poly(fp);
+
+  fclose(fp);
+}
+
 // Physical Moves (move) ------------------------------------------------------
 
 static void unmove_trial(void) {
@@ -343,30 +388,19 @@ static void move_displace(size_t const ipoly) {
   }
 }
 
-// Physical Adjustments (adjust) ----------------------------------------------
+// Adjustments (adjust) -------------------------------------------------------
 
 static void adjust_dx(void) {
   napkin.dx *= (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
 }
 
+// Constants () ---------------------------------------------------------------
+
+static double const hbar = 1;
+static double const epsilon = 1;
+static double const sigma = 1;
+
 // System-Specific Quantities () ----------------------------------------------
-
-static double Kone(size_t const ipoly, size_t const ibead) {
-  /*
-  double const cse = 2 * lambda * tau;
-
-  return -(d * N / 2) * log(M_2PI * cse)
-    + gsl_pow_2(length(R[m - 1] - R[m])) / (2 * cse);
-  */
-  return 0;
-}
-
-static double Vone(size_t const ipoly, size_t const ibead) {
-  /*
-  return (tau / 2) * (V(R[m - 1]) + V(R[m]));
-  */
-  return 0;
-}
 
 static double Sone(size_t const ipoly, size_t const ibead) {
   /*
@@ -375,23 +409,102 @@ static double Sone(size_t const ipoly, size_t const ibead) {
   return 0;
 }
 
-static double Kall(void) {
+static double Stotal(void) {
   return 0;
 }
 
-static double Vall(void) {
-  return 0;
+static double lj612(double const r) {
+  return 4 * epsilon *
+    (gsl_pow_uint(sigma / r, 12) - gsl_pow_6(sigma / r));
 }
 
-static double Sall(void) {
-  return 0;
+static double lj6122(double const r2) {
+  double const sigma2 = gsl_pow_2(sigma);
+
+  return 4 * epsilon *
+    (gsl_pow_6(sigma2 / r2) - gsl_pow_3(sigma2 / r2));
+}
+
+static double Kbead(size_t const ipoly, size_t const ibead) {
+  double K = 0;
+
+  // Note: self-closure assumed!
+  size_t const tab[] = {1, NBEAD - 1};
+  for (size_t i = 0;
+      i < sizeof tab / sizeof *tab;
+      ++i) {
+    double d[NDIM];
+    sub(d, napkin.R[ipoly].r[ibead].d,
+        napkin.R[ipoly].r[size_wrap(ibead + tab[i], NBEAD)].d);
+
+    K += normsq(d);
+  }
+
+  return K;
+}
+
+static double Ktotal(void) {
+  double K = 0;
+
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    for (size_t ibead = 0;
+        ibead < NBEAD;
+        ++ibead)
+      K += Kbead(ipoly, ibead);
+
+  return K;
+}
+
+static double Vbead(size_t const ibead) {
+  double V = 0;
+
+  for (size_t ipoly = 0;
+      ipoly < NPOLY;
+      ++ipoly)
+    for (size_t jpoly = ipoly + 1;
+        jpoly < NPOLY;
+        ++jpoly) {
+      double d[NDIM];
+      sub(d, napkin.R[ipoly].r[ibead].d, napkin.R[jpoly].r[ibead].d);
+
+      V += lj612(norm(d));
+    }
+
+  return V;
+}
+
+static double Vtotal(void) {
+  double V = 0;
+
+  for (size_t ibead = 0;
+      ibead < NBEAD;
+      ++ibead)
+    V += Vbead(ibead);
+
+  return V;
 }
 
 // Work Horses () -------------------------------------------------------------
 
-static void subwork(void) {
-  move_trial((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
-      (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
+static double subwork(void) {
+  size_t const ipoly = (size_t) gsl_rng_uniform_int(napkin.rng, NPOLY);
+  size_t const ibead = (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD);
+
+  // Local `Vbead`, because the rest stays the same.
+  double const T0 = Vbead(ibead);
+  double const K0 = Kbead(ipoly, ibead);
+
+  move_trial(ipoly, ibead);
+
+  double const T1 = Vbead(ibead);
+  double const K1 = Kbead(ipoly, ibead);
+
+  double const DeltaS_T = napkin.tau * (T1 - T0);
+  double const DeltaS_K = (1 / (4 * napkin.lambda * napkin.tau)) * (K1 - K0);
+
+  return DeltaS_T + DeltaS_K;
 }
 
 static void choice(double const DeltaS) {
@@ -411,34 +524,30 @@ static void choice(double const DeltaS) {
 }
 
 static void work(void) {
-  double const T0 = 0.5;
-  double const K0 = 0.5;
+  choice(subwork());
 
-  subwork();
+  adjust_dx();
 
-  double const T1 = 0.5;
-  double const K1 = 0.5;
+  if (now() >= napkin.t0 + napkin.dt) {
+    save_esl();
 
-  double const DeltaS_T = napkin.tau * (T1 - T0);
-  double const DeltaS_K = (1 / (4 * napkin.lambda * napkin.tau)) * (K1 - K0);
-
-  choice(DeltaS_T + DeltaS_K);
-
-  // adjust_dx();
+    napkin.t0 = now();
+  }
 }
 
 static void nop(void) {}
 
 int main(void) {
-  /* p. 44 */
-
   reset();
 
   gsl_rng_env_setup();
 
+  napkin.dt = 1;
+  napkin.t0 = now();
+
   napkin.L = 5;
   napkin.m = 1;
-  napkin.dx = 1;
+  napkin.dx = 2;
   napkin.beta = 1;
 
   napkin.rng = gsl_rng_alloc(gsl_rng_mt19937);
@@ -483,13 +592,7 @@ int main(void) {
 
   fclose(dispfp);
 
-  FILE* const fp = fopen("qho-ensemble.data", "w");
-  if (fp == NULL)
-    halt(fopen);
-
-  disp_poly(fp);
-
-  fclose(fp);
+  // save_esl();
 
   gsl_rng_free(napkin.rng);
 

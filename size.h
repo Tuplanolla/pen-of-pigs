@@ -2,7 +2,10 @@
 #define SIZE_H
 
 #include "exts.h"
+#include <limits.h>
 #include <stddef.h>
+
+#define SQRT_SIZE_MAX ((size_t) 1 << CHAR_BIT * sizeof (size_t) / 2)
 
 /*
 The call `size_cmp(x, y)` returns

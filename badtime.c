@@ -1,4 +1,5 @@
-#include "timepack.h"
+#include "badtime.h"
+#include <math.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -22,4 +23,10 @@ void pack_timespec(struct timespec* const tp, double const s) {
 
 double unpack_timespec(struct timespec const* const tp) {
   return (double) tp->tv_sec + (double) tp->tv_nsec / 1e+9;
+}
+
+double now(void) {
+  struct timespec tp;
+  return clock_gettime(CLOCK_MONOTONIC, &tp) == -1 ?
+    (double) NAN : unpack_timespec(&tp);
 }
