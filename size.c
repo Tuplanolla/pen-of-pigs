@@ -9,6 +9,14 @@ size_t size_wrap(size_t const x, size_t const y) {
   return (y + (x % y)) % y;
 }
 
+size_t size_midpoint(size_t const x, size_t const y) {
+  /*
+  Note that `(x + y) / 2` could overflow and
+  `x < y ? x + (y - x) / 2 : y + (x - y) / 2` could have bad performance.
+  */
+  return x / 2 + y / 2 + (x % 2 + y % 2) / 2;
+}
+
 size_t size_min(size_t const x, size_t const y) {
   return x < y ? x : y;
 }

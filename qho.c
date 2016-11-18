@@ -12,14 +12,27 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define NDIM 2
+// Static Constants (N) -------------------------------------------------------
+
+#define NDIM 3
 #define NPOLY 4
 #define NBEAD 8
 #define NTSTEP 16
 #define NPSTEP 256
 #define NRSTEP 100
 
+static_assert(NRSTEP <= NPSTEP,
+    "too many recording steps");
+
+// This is just a static version of `assert(NPSTEP <= sqrt(SIZE_MAX))`.
+static_assert(NPSTEP <= (size_t) 1 << CHAR_BIT * sizeof (size_t) / 2,
+    "too many production steps");
+
+// Constants () ---------------------------------------------------------------
+
 static double const hbar = 1;
+
+// Types () -------------------------------------------------------------------
 
 struct bead {
   double d[NDIM];
@@ -30,10 +43,23 @@ struct poly {
   struct bead r[NBEAD];
 };
 
+union hist {
+  struct {
+    size_t ipoly;
+    size_t ibead;
+    double d[NDIM];
+  } trial;
+  struct {
+    int dummy;
+  } bisect;
+};
+
 struct napkin {
   gsl_rng* rng;
   size_t accepted;
   size_t rejected;
+  void (* undo)(void);
+  union hist history;
   double dx;
   double m;
   double L;
@@ -47,35 +73,18 @@ struct paper {
   double energy;
 };
 
+// Global State () ------------------------------------------------------------
+
 static struct napkin napkin;
 
 static struct paper paper;
 
-/*
-
-double linkact() {
-}
-
-double action() {
-  return -log(linkact());
-}
-
-double denmat() {
-  return integral(exp(-sum(action())));
-}
-
-double sample(gsl_rng* const rng, double* const xs, size_t const n) {
-  double x;
-  gsl_ran_sample(rng, &x, 1, xs, n, sizeof x);
-  return x;
-}
-
-*/
+// Initial Configurations (conf) ----------------------------------------------
 
 /*
 Random initial configuration.
 */
-static void rconf(void) {
+static void conf_rand(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly) {
@@ -95,7 +104,7 @@ static void rconf(void) {
 /*
 Random point initial configuration.
 */
-static void rpconf(void) {
+static void conf_randpt(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly) {
@@ -117,7 +126,7 @@ static void rpconf(void) {
 /*
 Random lattice initial configuration.
 */
-static void rlatconf(void) {
+static void conf_randlatt(void) {
   double const w = ceil(pow(NPOLY, 1.0 / NDIM));
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
@@ -148,7 +157,7 @@ static void rlatconf(void) {
 /*
 Point lattice initial configuration.
 */
-static void platconf(void) {
+static void conf_ptlatt(void) {
   double const w = ceil(pow(NPOLY, 1.0 / NDIM));
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
@@ -179,7 +188,7 @@ static void platconf(void) {
 Circle lattice initial configuration.
 The equations are based on the theory of Lissajous knots.
 */
-static void clatconf(void) {
+static void conf_circlatt(void) {
   double const w = ceil(pow(NPOLY, 1.0 / NDIM));
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
@@ -210,10 +219,12 @@ static void clatconf(void) {
   }
 }
 
+// Configuration Forcing (force) ----------------------------------------------
+
 /*
 Close the current configuration.
 */
-static void closec(void) {
+static void force_close(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly)
@@ -223,17 +234,19 @@ static void closec(void) {
 /*
 Open the current configuration.
 */
-static void openc(void) {
+static void force_open(void) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly)
     napkin.R[ipoly].i = SIZE_MAX;
 }
 
+// Printing into Data Files (disp) --------------------------------------------
+
 /*
 Print bead into stream `fp`.
 */
-static void dispbead(FILE* const fp,
+static void disp_bead(FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   fprintf(fp, "%zu", iindex);
 
@@ -248,17 +261,17 @@ static void dispbead(FILE* const fp,
 /*
 Print polymer into stream `fp`.
 */
-static void disppoly(FILE* const fp) {
+static void disp_poly(FILE* const fp) {
   for (size_t ipoly = 0;
       ipoly < NPOLY;
       ++ipoly) {
     for (size_t ibead = 0;
         ibead < NBEAD;
         ++ibead)
-      dispbead(fp, ibead, ipoly, ibead);
+      disp_bead(fp, ibead, ipoly, ibead);
 
     if (napkin.R[ipoly].i != SIZE_MAX)
-      dispbead(fp, NBEAD, napkin.R[ipoly].i, 0);
+      disp_bead(fp, NBEAD, napkin.R[ipoly].i, 0);
 
     fprintf(fp, "\n");
   }
@@ -271,27 +284,37 @@ static void dispdisp(FILE* const fp) {
   fprintf(fp, "%f\n", napkin.dx);
 }
 
-static void trialmv(size_t const ipoly, size_t const ibead) {
+// Physical Moves (move) ------------------------------------------------------
+
+static void unmove_trial(void) {
+  size_t const ipoly = napkin.history.trial.ipoly;
+  size_t const ibead = napkin.history.trial.ibead;
+
+  for (size_t idim = 0;
+      idim < NDIM;
+      ++idim)
+    napkin.R[ipoly].r[ibead].d[idim] = napkin.history.trial.d[idim];
+}
+
+static void move_trial(size_t const ipoly, size_t const ibead) {
+  napkin.undo = unmove_trial;
+
+  napkin.history.trial.ipoly = ipoly;
+  napkin.history.trial.ibead = ibead;
+
   for (size_t idim = 0;
       idim < NDIM;
       ++idim) {
+    napkin.history.trial.d[idim] = napkin.R[ipoly].r[ibead].d[idim];
+
     napkin.R[ipoly].r[ibead].d[idim] = wrap(
         napkin.R[ipoly].r[ibead].d[idim] +
         napkin.dx * gsl_ran_flat(napkin.rng, -1, 1),
       napkin.L);
   }
-  // Displacement adjustment test...
-  ++napkin.accepted;
-  ++napkin.rejected;
-  napkin.accepted += (size_t) gsl_rng_uniform_int(napkin.rng, 257);
-  napkin.rejected += (size_t) gsl_rng_uniform_int(napkin.rng, 242);
 }
 
-static void adjustdx(void) {
-  napkin.dx *= (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
-}
-
-static void bisectmv(size_t const ipoly, size_t const ibead) {
+static void move_bisect(size_t const ipoly, size_t const ibead) {
   for (size_t idim = 0;
       idim < NDIM;
       ++idim) {
@@ -302,10 +325,11 @@ static void bisectmv(size_t const ipoly, size_t const ibead) {
   }
 }
 
-static void mullevmv(size_t const ipoly, size_t const ibead, size_t const nlev) {
+static void move_multlev(size_t const ipoly, size_t const ibead,
+    size_t const nlev) {
 }
 
-static void displmv(size_t const ipoly) {
+static void move_displace(size_t const ipoly) {
   for (size_t idim = 0;
       idim < NDIM;
       ++idim) {
@@ -319,46 +343,96 @@ static void displmv(size_t const ipoly) {
   }
 }
 
-/*
+// Physical Adjustments (adjust) ----------------------------------------------
 
-static double Kthing(size_t const ipoly, size_t const ibead) {
+static void adjust_dx(void) {
+  napkin.dx *= (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
+}
+
+// System-Specific Quantities () ----------------------------------------------
+
+static double Kone(size_t const ipoly, size_t const ibead) {
+  /*
   double const cse = 2 * lambda * tau;
 
   return -(d * N / 2) * log(M_2PI * cse)
     + gsl_pow_2(length(R[m - 1] - R[m])) / (2 * cse);
+  */
+  return 0;
 }
 
-// prim approx
-static double Uthing(size_t const ipoly, size_t const ibead) {
+static double Vone(size_t const ipoly, size_t const ibead) {
+  /*
   return (tau / 2) * (V(R[m - 1]) + V(R[m]));
+  */
+  return 0;
 }
 
-// prim approx also
-// but wrong
-static double Sthing(size_t const ipoly, size_t const ibead) {
-  return Kthing(napkin, ipoly, ibead) + Uthing(napkin, ipoly, ibead);
+static double Sone(size_t const ipoly, size_t const ibead) {
+  /*
+  return Kone(napkin, ipoly, ibead) + Uone(napkin, ipoly, ibead);
+  */
+  return 0;
 }
 
-*/
+static double Kall(void) {
+  return 0;
+}
+
+static double Vall(void) {
+  return 0;
+}
+
+static double Sall(void) {
+  return 0;
+}
+
+// Work Horses () -------------------------------------------------------------
+
+static void subwork(void) {
+  move_trial((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
+      (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
+}
+
+static void choice(double const DeltaS) {
+  if (DeltaS <= 0)
+    ++napkin.accepted;
+  else {
+    double const q = gsl_ran_flat(napkin.rng, 0, 1);
+
+    if (q <= exp(-DeltaS))
+      ++napkin.accepted;
+    else {
+      napkin.undo();
+
+      ++napkin.rejected;
+    }
+  }
+}
 
 static void work(void) {
-  trialmv((size_t) gsl_rng_uniform_int(napkin.rng, NPOLY),
-      (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD));
+  double const T0 = 0.5;
+  double const K0 = 0.5;
 
-  // Compute the diffence in potential action between the new and old config
+  subwork();
 
-  // Accept or reject
+  double const T1 = 0.5;
+  double const K1 = 0.5;
 
-  adjustdx();
+  double const DeltaS_T = napkin.tau * (T1 - T0);
+  double const DeltaS_K = (1 / (4 * napkin.lambda * napkin.tau)) * (K1 - K0);
+
+  choice(DeltaS_T + DeltaS_K);
+
+  // adjust_dx();
 }
+
+static void nop(void) {}
 
 int main(void) {
   /* p. 44 */
 
   reset();
-
-  assert(NRSTEP <= NPSTEP);
-  assert(NPSTEP <= (size_t) 1 << CHAR_BIT * sizeof (size_t) / 2);
 
   gsl_rng_env_setup();
 
@@ -373,7 +447,9 @@ int main(void) {
 
   napkin.tau = napkin.beta / NBEAD;
 
-  clatconf();
+  napkin.undo = nop;
+
+  conf_circlatt();
 
   FILE* const dispfp = fopen("qho-displacement.data", "w");
   if (dispfp == NULL)
@@ -411,7 +487,7 @@ int main(void) {
   if (fp == NULL)
     halt(fopen);
 
-  disppoly(fp);
+  disp_poly(fp);
 
   fclose(fp);
 

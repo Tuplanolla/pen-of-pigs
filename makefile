@@ -24,6 +24,8 @@ flags=-DNDEBUG -Ofast -s -w
 endif
 endif
 
+flags+=-Wno-unused-function -Wno-unused-parameter # temporary
+
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
 
