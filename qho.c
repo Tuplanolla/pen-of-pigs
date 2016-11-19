@@ -21,7 +21,7 @@
 #define NPOLY 4
 #define NBEAD 8
 #define NTSTEP 16
-#define NPSTEP (1 << 24)
+#define NPSTEP (1 << 20)
 #define NRSTEP 100
 
 /*
@@ -310,7 +310,7 @@ static void disp_poly(FILE* const fp) {
 /*
 Print trial displacement into stream `fp`.
 */
-static void dispdisp(FILE* const fp) {
+static void disp_drift(FILE* const fp) {
   fprintf(fp, "%f\n", napkin.dx);
 }
 
@@ -527,7 +527,8 @@ static void status(void) {
 static void work(void) {
   choice(subwork());
 
-  adjust_dx();
+  if ((napkin.accepted + napkin.rejected) % 256 == 0)
+    adjust_dx();
 
   int signum;
   if (sig_use(&signum) && signum == SIGUSR1)
@@ -540,7 +541,8 @@ static void not_main(void) {
   reset();
 
   int const xs[] = {SIGUSR1, SIGUSR2};
-  (void) sig_register(xs, sizeof xs / sizeof *xs);
+  if (sig_register(xs, sizeof xs / sizeof *xs) != SIZE_MAX)
+    halt(sig_register);
 
   napkin.dt = 1;
   napkin.t0 = now();
@@ -561,8 +563,8 @@ static void not_main(void) {
 
   conf_circlatt();
 
-  FILE* const dispfp = fopen("qho-displacement.data", "w");
-  if (dispfp == NULL)
+  FILE* const driftfp = fopen("qho-drift.data", "w");
+  if (driftfp == NULL)
     halt(fopen);
 
   for (size_t istep = 0, itstep = 0, ipstep = 0, irstep = 0;
@@ -577,7 +579,7 @@ static void not_main(void) {
 
       if (NRSTEP * ipstep > NPSTEP * irstep) {
         // Save results into files
-        dispdisp(dispfp);
+        disp_drift(driftfp);
 
         ++irstep;
       }
@@ -586,11 +588,7 @@ static void not_main(void) {
     }
   }
 
-  // Closing index exchange test...
-  napkin.R[0].i = 2;
-  napkin.R[2].i = 0;
-
-  fclose(dispfp);
+  fclose(driftfp);
 
   save_esl();
 

@@ -2,6 +2,7 @@
 #define SIG_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define SIG_MIN (SIG_ATOMIC_MIN + 2)
@@ -16,9 +17,9 @@ void sig_handler(int);
 /*
 The call `i = sig_register(xs, n)` registers `sig_handler`
 for each signal in the array `xs` of length `n`.
-If the operation is successful, `i` is `SIZE_MAX`.
-Otherwise `i` becomes the index of the first failure and
-the rest are not attempted.
+If the operation is successful, `i` becomes `SIZE_MAX`.
+Otherwise `i` becomes the index of the first signal that failed to register and
+registering the rest of the signals is not attempted.
 */
 size_t sig_register(int const*, size_t);
 
@@ -42,6 +43,7 @@ bool sig_under(void);
 The call `sig_normal(signum)` returns `true` if
 a normal signal (with a small magnitude) has been caught and
 copies its value into `signum` if it is not `NULL`.
+Otherwise `false` is returned.
 */
 bool sig_normal(int*);
 
@@ -63,7 +65,7 @@ Calling `sig_forget` before the first use is not necessary.
 void sig_forget(void);
 
 /*
-This procedure combines `sig_normal` and `sig_foget`.
+This procedure calls `sig_normal` and then `sig_forget`.
 */
 bool sig_use(int*);
 

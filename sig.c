@@ -1,4 +1,3 @@
-#include "err.h"
 #include "sig.h"
 #include <limits.h>
 #include <signal.h>

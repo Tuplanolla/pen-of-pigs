@@ -29,9 +29,12 @@ flags+=-Wno-unused-function -Wno-unused-parameter # temporary
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
 
-run: build
+plot:
+	gnuplot -p qho-drift.gp
 	gnuplot -p qho-ensemble-2d.gp
-	# gnuplot -p qho-ensemble-3d.gp
+	gnuplot -p qho-ensemble-3d.gp
+
+run: build
 	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 ./qho
 
 check: build
