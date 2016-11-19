@@ -1,16 +1,9 @@
-#ifndef REPORT_H
-#define REPORT_H
+#ifndef ERR_H
+#define ERR_H
 
+#include "exts.h"
 #include <stdbool.h>
 #include <stdlib.h>
-
-/*
-The preprocessor directives `BEGIN` and `END` allow converting
-multiple statements into a single statement
-with local scope and no redundant semicolons.
-*/
-#define BEGIN do {
-#define END } while (false)
 
 /*
 The call `reset()` initializes the timing mechanism `warn` is based on.
@@ -26,7 +19,7 @@ is `NULL` or points to a string with the name of the procedure
 that caused the error.
 You should use `warn` instead of calling `warn_with` directly.
 */
-void warn_with(char const* func, char const* file, size_t line, char const* s);
+void warn_with(char const*, char const*, size_t, char const*);
 
 /*
 The call `warn(p)` prints a detailed error message

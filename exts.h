@@ -2,6 +2,14 @@
 #define EXTS_H
 
 /*
+The preprocessor directives `BEGIN` and `END` allow converting
+multiple statements into a single statement
+with local scope and no redundant semicolons.
+*/
+#define BEGIN do {
+#define END } while (false)
+
+/*
 This disables GNU extensions if they are unsupported.
 */
 #if !defined __GNUC__ || __GNUC__ < 4
@@ -23,7 +31,7 @@ Note that each `static_assert` must be on its own line to avoid conflicts.
 #endif
 
 /*
-This preprocessor directive allows one to write `for ever`.
+This preprocessor directive makes it possible to write `for ever`.
 */
 #ifndef ever
 #define ever (;;)

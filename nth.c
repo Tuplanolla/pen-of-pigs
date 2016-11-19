@@ -1,5 +1,5 @@
+#include "err.h"
 #include "nth.h"
-#include "report.h"
 #include <stddef.h>
 
 static unsigned int primes[] = {

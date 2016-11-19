@@ -1,12 +1,14 @@
-#include "badtime.h"
-#include "floating.h"
-#include "report.h"
+#include "apxtime.h"
+#include "err.h"
+#include "flt.h"
+#include "sig.h"
 #include "size.h"
 #include <assert.h>
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,7 +21,7 @@
 #define NPOLY 4
 #define NBEAD 8
 #define NTSTEP 16
-#define NPSTEP (1 << 20)
+#define NPSTEP (1 << 24)
 #define NRSTEP 100
 
 /*
@@ -424,13 +426,13 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
   double K = 0;
 
   // Note: self-closure assumed!
-  size_t const tab[] = {1, NBEAD - 1};
+  size_t const xs[] = {1, NBEAD - 1};
   for (size_t i = 0;
-      i < sizeof tab / sizeof *tab;
+      i < sizeof xs / sizeof *xs;
       ++i) {
     double d[NDIM];
     sub(d, napkin.R[ipoly].r[ibead].d,
-        napkin.R[ipoly].r[size_wrap(ibead + tab[i], NBEAD)].d);
+        napkin.R[ipoly].r[size_wrap(ibead + xs[i], NBEAD)].d);
 
     K += normsq(d);
   }
@@ -519,11 +521,7 @@ static void choice(double const DeltaS) {
 }
 
 static void status(void) {
-  if (now() >= napkin.t0 + napkin.dt) {
-    save_esl();
-
-    napkin.t0 = now();
-  }
+  save_esl();
 }
 
 static void work(void) {
@@ -531,13 +529,18 @@ static void work(void) {
 
   adjust_dx();
 
-  status();
+  int signum;
+  if (sig_use(&signum) && signum == SIGUSR1)
+    status();
 }
 
 static void nop(void) {}
 
-int main(void) {
+static void not_main(void) {
   reset();
+
+  int const xs[] = {SIGUSR1, SIGUSR2};
+  (void) sig_register(xs, sizeof xs / sizeof *xs);
 
   napkin.dt = 1;
   napkin.t0 = now();
@@ -562,25 +565,24 @@ int main(void) {
   if (dispfp == NULL)
     halt(fopen);
 
-  // Thermalize.
-  for (size_t itstep = 0;
-      itstep < NTSTEP;
-      ++itstep)
+  for (size_t istep = 0, itstep = 0, ipstep = 0, irstep = 0;
+      istep < NTSTEP + NPSTEP;
+      ++istep) {
     work();
 
-  // Work productively.
-  for (size_t ipstep = 0, irstep = 0;
-      ipstep < NPSTEP;
-      ++ipstep) {
-    work();
+    if (istep < NTSTEP)
+      ++itstep;
+    else {
+      // Update napkin with estimators
 
-    // Update napkin with estimators
+      if (NRSTEP * ipstep > NPSTEP * irstep) {
+        // Save results into files
+        dispdisp(dispfp);
 
-    if (NRSTEP * ipstep > NPSTEP * irstep) {
-      // Save results into files
-      dispdisp(dispfp);
+        ++irstep;
+      }
 
-      ++irstep;
+      ++ipstep;
     }
   }
 
@@ -593,6 +595,10 @@ int main(void) {
   save_esl();
 
   gsl_rng_free(napkin.rng);
+}
+
+int main(void) {
+  not_main();
 
   return EXIT_SUCCESS;
 }

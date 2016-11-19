@@ -1,5 +1,5 @@
-#include "floating.h"
-#include "report.h"
+#include "err.h"
+#include "flt.h"
 #include <gsl/gsl_math.h>
 #include <math.h>
 
