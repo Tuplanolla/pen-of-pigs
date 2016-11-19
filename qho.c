@@ -66,18 +66,13 @@ struct napkin {
   double beta;
   double lambda;
   double tau;
-  struct poly R[NPOLY];
-};
-
-struct paper {
   double energy;
+  struct poly R[NPOLY];
 };
 
 // Global State () ------------------------------------------------------------
 
 static struct napkin napkin;
-
-static struct paper paper;
 
 // Vector Math (??) -----------------------------------------------------------
 
@@ -523,11 +518,7 @@ static void choice(double const DeltaS) {
   }
 }
 
-static void work(void) {
-  choice(subwork());
-
-  adjust_dx();
-
+static void status(void) {
   if (now() >= napkin.t0 + napkin.dt) {
     save_esl();
 
@@ -535,12 +526,18 @@ static void work(void) {
   }
 }
 
+static void work(void) {
+  choice(subwork());
+
+  adjust_dx();
+
+  status();
+}
+
 static void nop(void) {}
 
 int main(void) {
   reset();
-
-  gsl_rng_env_setup();
 
   napkin.dt = 1;
   napkin.t0 = now();
@@ -550,7 +547,8 @@ int main(void) {
   napkin.dx = 2;
   napkin.beta = 1;
 
-  napkin.rng = gsl_rng_alloc(gsl_rng_mt19937);
+  gsl_rng_env_setup();
+  napkin.rng = gsl_rng_alloc(gsl_rng_default);
 
   napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
 
@@ -576,7 +574,7 @@ int main(void) {
       ++ipstep) {
     work();
 
-    // Update paper with estimators
+    // Update napkin with estimators
 
     if (NRSTEP * ipstep > NPSTEP * irstep) {
       // Save results into files
@@ -592,7 +590,7 @@ int main(void) {
 
   fclose(dispfp);
 
-  // save_esl();
+  save_esl();
 
   gsl_rng_free(napkin.rng);
 

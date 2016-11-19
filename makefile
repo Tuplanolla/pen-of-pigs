@@ -30,7 +30,7 @@ CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
 
 run: build
-	time -v ./qho
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho
 	gnuplot -p qho-ensemble-2d.gp
 	# gnuplot -p qho-ensemble-3d.gp
 
