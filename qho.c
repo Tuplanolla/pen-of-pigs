@@ -1,7 +1,7 @@
 #include "apxtime.h"
 #include "err.h"
 #include "flt.h"
-#include "sig.h"
+#include "sigs.h"
 #include "size.h"
 #include <assert.h>
 #include <gsl/gsl_math.h>
@@ -20,9 +20,9 @@
 #define NDIM 3
 #define NPOLY 4
 #define NBEAD 8
-#define NTSTEP 16
-#define NPSTEP (1 << 20)
-#define NRSTEP 100
+#define NTSTEP (1 << 4)
+#define NPSTEP (1 << 24)
+#define NRSTEP (1 << 14)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -39,7 +39,8 @@ struct bead {
 };
 
 struct poly {
-  size_t i;
+  size_t from;
+  size_t to;
   struct bead r[NBEAD];
 };
 
@@ -55,8 +56,6 @@ union hist {
 };
 
 struct napkin {
-  double dt;
-  double t0;
   gsl_rng* rng;
   size_t accepted;
   size_t rejected;
@@ -68,6 +67,10 @@ struct napkin {
   double beta;
   double lambda;
   double tau;
+  double (* V2)(double);
+  double (* V2cl)(double);
+  double (* K2)(double);
+  double (* K2cl)(double);
   double energy;
   struct poly R[NPOLY];
 };
@@ -76,37 +79,59 @@ struct napkin {
 
 static struct napkin napkin;
 
-// Vector Math (??) -----------------------------------------------------------
+// Vector Math (bead) ---------------------------------------------------------
 
-static void add(double* const d,
-    double const* const d0, double const* const d1) {
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim)
-    d[idim] = d0[idim] + d1[idim];
+static struct bead bead_add(struct bead const r0, struct bead const r1) {
+  struct bead r;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    r.d[idim] = r0.d[idim] + r1.d[idim];
+
+  return r;
 }
 
-static void sub(double* const d,
-    double const* const d0, double const* const d1) {
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim)
-    d[idim] = d1[idim] - d0[idim];
+static struct bead bead_sub(struct bead const r0, struct bead const r1) {
+  struct bead r;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    r.d[idim] = r0.d[idim] - r1.d[idim];
+
+  return r;
 }
 
-static double normsq(double const* const d) {
+static double bead_norm2(struct bead const r) {
   double s = 0;
 
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim)
-    s += gsl_pow_2(d[idim]);
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    s += gsl_pow_2(r.d[idim]);
 
   return s;
 }
 
-static double norm(double const* const d) {
-  return sqrt(normsq(d));
+static double bead_norm(struct bead const r) {
+  return sqrt(bead_norm2(r));
+}
+
+// Configuration Forcing (force) ----------------------------------------------
+
+/*
+Close the current configuration.
+*/
+static void force_close(void) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    napkin.R[ipoly].from = ipoly;
+    napkin.R[ipoly].to = ipoly;
+  }
+}
+
+/*
+Open the current configuration.
+*/
+static void force_open(void) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    napkin.R[ipoly].from = SIZE_MAX;
+    napkin.R[ipoly].to = SIZE_MAX;
+  }
 }
 
 // Initial Configurations (conf) ----------------------------------------------
@@ -115,42 +140,24 @@ static double norm(double const* const d) {
 Random initial configuration.
 */
 static void conf_rand(void) {
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    napkin.R[ipoly].i = ipoly;
-
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead)
-      for (size_t idim = 0;
-          idim < NDIM;
-          ++idim)
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      for (size_t idim = 0; idim < NDIM; ++idim)
         napkin.R[ipoly].r[ibead].d[idim] =
           gsl_ran_flat(napkin.rng, 0, napkin.L);
-  }
 }
 
 /*
 Random point initial configuration.
 */
 static void conf_randpt(void) {
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    napkin.R[ipoly].i = ipoly;
-
-    for (size_t idim = 0;
-        idim < NDIM;
-        ++idim) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t idim = 0; idim < NDIM; ++idim) {
       double const x = gsl_ran_flat(napkin.rng, 0, napkin.L);
 
-      for (size_t ibead = 0;
-          ibead < NBEAD;
-          ++ibead)
+      for (size_t ibead = 0; ibead < NBEAD; ++ibead)
         napkin.R[ipoly].r[ibead].d[idim] = x;
     }
-  }
 }
 
 /*
@@ -161,19 +168,11 @@ static void conf_randlatt(void) {
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    napkin.R[ipoly].i = ipoly;
-
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
       size_t m = ipoly;
 
-      for (size_t idim = 0;
-          idim < NDIM;
-          ++idim) {
+      for (size_t idim = 0; idim < NDIM; ++idim) {
         size_div_t const z = size_div(m, n);
 
         napkin.R[ipoly].r[ibead].d[idim] =
@@ -181,7 +180,6 @@ static void conf_randlatt(void) {
         m = z.quot;
       }
     }
-  }
 }
 
 /*
@@ -192,26 +190,17 @@ static void conf_ptlatt(void) {
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    napkin.R[ipoly].i = ipoly;
-
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
       size_t m = ipoly;
 
-      for (size_t idim = 0;
-          idim < NDIM;
-          ++idim) {
+      for (size_t idim = 0; idim < NDIM; ++idim) {
         size_div_t const z = size_div(m, n);
 
         napkin.R[ipoly].r[ibead].d[idim] = (double) z.rem * v;
         m = z.quot;
       }
     }
-  }
 }
 
 /*
@@ -223,21 +212,13 @@ static void conf_circlatt(void) {
   double const v = napkin.L / w;
   size_t const n = (size_t) w;
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    napkin.R[ipoly].i = ipoly;
-
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
       double const t = (double) ibead / NBEAD;
 
       size_t m = ipoly;
 
-      for (size_t idim = 0;
-          idim < NDIM;
-          ++idim) {
+      for (size_t idim = 0; idim < NDIM; ++idim) {
         double const phi = (double) idim / NDIM;
         double const y = sin(M_2PI * (t + phi / 2)) / 2;
 
@@ -246,29 +227,6 @@ static void conf_circlatt(void) {
         m = z.quot;
       }
     }
-  }
-}
-
-// Configuration Forcing (force) ----------------------------------------------
-
-/*
-Close the current configuration.
-*/
-static void force_close(void) {
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly)
-    napkin.R[ipoly].i = ipoly;
-}
-
-/*
-Open the current configuration.
-*/
-static void force_open(void) {
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly)
-    napkin.R[ipoly].i = SIZE_MAX;
 }
 
 // Printing into Data Files (disp) --------------------------------------------
@@ -280,9 +238,7 @@ static void disp_bead(FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   fprintf(fp, "%zu", iindex);
 
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim)
+  for (size_t idim = 0; idim < NDIM; ++idim)
     fprintf(fp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
 
   fprintf(fp, "\n");
@@ -292,16 +248,12 @@ static void disp_bead(FILE* const fp,
 Print polymer into stream `fp`.
 */
 static void disp_poly(FILE* const fp) {
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly) {
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead)
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
       disp_bead(fp, ibead, ipoly, ibead);
 
-    if (napkin.R[ipoly].i != SIZE_MAX)
-      disp_bead(fp, NBEAD, napkin.R[ipoly].i, 0);
+    if (napkin.R[ipoly].to != SIZE_MAX)
+      disp_bead(fp, NBEAD, napkin.R[ipoly].to, 0);
 
     fprintf(fp, "\n");
   }
@@ -311,7 +263,7 @@ static void disp_poly(FILE* const fp) {
 Print trial displacement into stream `fp`.
 */
 static void disp_drift(FILE* const fp) {
-  fprintf(fp, "%f\n", napkin.dx);
+  fprintf(fp, "%zu %f\n", napkin.accepted + napkin.rejected, napkin.dx);
 }
 
 // Saving into Data Files (save)
@@ -332,9 +284,7 @@ static void unmove_trial(void) {
   size_t const ipoly = napkin.history.trial.ipoly;
   size_t const ibead = napkin.history.trial.ibead;
 
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim)
+  for (size_t idim = 0; idim < NDIM; ++idim)
     napkin.R[ipoly].r[ibead].d[idim] = napkin.history.trial.d[idim];
 }
 
@@ -344,9 +294,7 @@ static void move_trial(size_t const ipoly, size_t const ibead) {
   napkin.history.trial.ipoly = ipoly;
   napkin.history.trial.ibead = ibead;
 
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim) {
+  for (size_t idim = 0; idim < NDIM; ++idim) {
     napkin.history.trial.d[idim] = napkin.R[ipoly].r[ibead].d[idim];
 
     napkin.R[ipoly].r[ibead].d[idim] = wrap(
@@ -357,9 +305,7 @@ static void move_trial(size_t const ipoly, size_t const ibead) {
 }
 
 static void move_bisect(size_t const ipoly, size_t const ibead) {
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim) {
+  for (size_t idim = 0; idim < NDIM; ++idim) {
     napkin.R[ipoly].r[ibead].d[idim] =
       gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau)) +
       midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
@@ -372,15 +318,11 @@ static void move_multlev(size_t const ipoly, size_t const ibead,
 }
 
 static void move_displace(size_t const ipoly) {
-  for (size_t idim = 0;
-      idim < NDIM;
-      ++idim) {
+  for (size_t idim = 0; idim < NDIM; ++idim) {
     double const r =
       gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau));
 
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
       napkin.R[ipoly].r[ibead].d[idim] += r;
   }
 }
@@ -410,31 +352,21 @@ static double Stotal(void) {
   return 0;
 }
 
-static double lj612(double const r) {
-  return 4 * epsilon *
-    (gsl_pow_uint(sigma / r, 12) - gsl_pow_6(sigma / r));
-}
-
-static double lj6122(double const r2) {
-  double const sigma2 = gsl_pow_2(sigma);
-
-  return 4 * epsilon *
-    (gsl_pow_6(sigma2 / r2) - gsl_pow_3(sigma2 / r2));
-}
-
 static double Kbead(size_t const ipoly, size_t const ibead) {
   double K = 0;
 
-  // Note: self-closure assumed!
-  size_t const xs[] = {1, NBEAD - 1};
-  for (size_t i = 0;
-      i < sizeof xs / sizeof *xs;
-      ++i) {
-    double d[NDIM];
-    sub(d, napkin.R[ipoly].r[ibead].d,
-        napkin.R[ipoly].r[size_wrap(ibead + xs[i], NBEAD)].d);
+  for (int i = 0; i < 2; ++i) {
+    bool const p = ibead == 0 && i == 0;
+    bool const q = ibead == NBEAD - 1 && i == 1;
+    double (* const f)(double) = p || q ? napkin.K2cl : napkin.K2;
+    size_t const jbead = size_wrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
+    size_t const jpoly = p ? napkin.R[ipoly].from :
+      q ? napkin.R[ipoly].to :
+      ipoly;
 
-    K += normsq(d);
+    if (jpoly != SIZE_MAX)
+      K += f(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
+              napkin.R[jpoly].r[jbead])));
   }
 
   return K;
@@ -443,12 +375,8 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
 static double Ktotal(void) {
   double K = 0;
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly)
-    for (size_t ibead = 0;
-        ibead < NBEAD;
-        ++ibead)
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
       K += Kbead(ipoly, ibead);
 
   return K;
@@ -457,17 +385,13 @@ static double Ktotal(void) {
 static double Vbead(size_t const ibead) {
   double V = 0;
 
-  for (size_t ipoly = 0;
-      ipoly < NPOLY;
-      ++ipoly)
-    for (size_t jpoly = ipoly + 1;
-        jpoly < NPOLY;
-        ++jpoly) {
-      double d[NDIM];
-      sub(d, napkin.R[ipoly].r[ibead].d, napkin.R[jpoly].r[ibead].d);
+  bool const p = ibead == 0 || ibead == NBEAD - 1;
+  double (* const f)(double) = p ? napkin.V2cl : napkin.V2;
 
-      V += lj612(norm(d));
-    }
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
+      V += f(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
+              napkin.R[jpoly].r[ibead])));
 
   return V;
 }
@@ -475,9 +399,7 @@ static double Vbead(size_t const ibead) {
 static double Vtotal(void) {
   double V = 0;
 
-  for (size_t ibead = 0;
-      ibead < NBEAD;
-      ++ibead)
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
     V += Vbead(ibead);
 
   return V;
@@ -531,26 +453,39 @@ static void work(void) {
     adjust_dx();
 
   int signum;
-  if (sig_use(&signum) && signum == SIGUSR1)
+  if (sigs_use(&signum) && signum == SIGUSR1)
     status();
 }
 
 static void nop(void) {}
 
+static double Vee2(double const r2) {
+  return lj6122(r2, epsilon, gsl_pow_2(sigma));
+}
+
+static double identity(double const r) {
+  return r;
+}
+
+static double zeroid(double const r) {
+  return 0;
+}
+
 static void not_main(void) {
   reset();
 
-  int const xs[] = {SIGUSR1, SIGUSR2};
-  if (sig_register(xs, sizeof xs / sizeof *xs) != SIZE_MAX)
-    halt(sig_register);
-
-  napkin.dt = 1;
-  napkin.t0 = now();
+  int const sigs[] = {SIGUSR1, SIGUSR2};
+  if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
+    halt(sigs_register);
 
   napkin.L = 5;
   napkin.m = 1;
   napkin.dx = 2;
   napkin.beta = 1;
+  napkin.V2 = Vee2;
+  napkin.V2cl = zeroid;
+  napkin.K2 = identity;
+  napkin.K2cl = identity;
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -562,10 +497,13 @@ static void not_main(void) {
   napkin.undo = nop;
 
   conf_circlatt();
+  force_close();
 
   FILE* const driftfp = fopen("qho-drift.data", "w");
   if (driftfp == NULL)
     halt(fopen);
+
+  disp_drift(driftfp); // Just to prevent empty data files.
 
   for (size_t istep = 0, itstep = 0, ipstep = 0, irstep = 0;
       istep < NTSTEP + NPSTEP;
@@ -590,7 +528,7 @@ static void not_main(void) {
 
   fclose(driftfp);
 
-  save_esl();
+  status();
 
   gsl_rng_free(napkin.rng);
 }

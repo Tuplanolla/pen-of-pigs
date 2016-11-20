@@ -31,6 +31,7 @@ LDLIBS=-lm `pkg-config --libs gsl`
 
 plot:
 	gnuplot -p qho-drift.gp
+	gnuplot -p qho-worldlines-x.gp
 	gnuplot -p qho-ensemble-2d.gp
 	gnuplot -p qho-ensemble-3d.gp
 
@@ -48,7 +49,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: apxtime.o err.o flt.o nth.o qho.o sig.o size.o
+qho: apxtime.o err.o flt.o nth.o qho.o sigs.o size.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

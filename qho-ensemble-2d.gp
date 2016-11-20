@@ -13,7 +13,7 @@ dfx(i, x, y) = p(x1 - x2)
 dfy(i, x, y) = p(y1 - y2)
 set xrange [0 - L / 2 : L + L / 2]
 set yrange [0 - L / 2 : L + L / 2]
-set object 1 rectangle from 0, 0 to L, L
+set object 1 rectangle from 0, 0 to L, L fillstyle empty
 plot for [dx = -L : L : L] for [dy = -L : L : L] \
   'qho-ensemble.data' using \
   ($2 + dx) : ($3 + dy) every ::0::0 \

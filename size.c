@@ -37,9 +37,7 @@ size_div_t size_div(size_t const x, size_t const y) {
 size_t size_pow(size_t const x, size_t const y) {
   size_t z = 1;
 
-  for (size_t i = 0;
-      i < y;
-      ++i)
+  for (size_t i = 0; i < y; ++i)
     z *= x;
 
   return z;
