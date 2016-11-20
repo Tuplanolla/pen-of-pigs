@@ -1,4 +1,3 @@
-#include "err.h"
 #include "nth.h"
 #include <stddef.h>
 
@@ -736,5 +735,5 @@ unsigned int nth_prime(size_t const n) {
   if (n < sizeof primes / sizeof *primes)
     return primes[n];
   else
-    halt(primes);
+    return 0;
 }

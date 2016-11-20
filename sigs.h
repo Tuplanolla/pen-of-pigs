@@ -15,57 +15,64 @@ This can and should be registered as a signal handler with `sigs_register`.
 void sigs_handler(int);
 
 /*
-The call `i = sigs_register(xs, n)` registers `sigs_handler`
-for each signal in the array `xs` of length `n`.
-If the operation is successful, `i` becomes `SIZE_MAX`.
-Otherwise `i` becomes the index of the first signal that failed to register and
-registering the rest of the signals is not attempted.
+The statement `i = sigs_register(sigs, n)` tries to register `sigs_handler`
+as the signal handler of each signal in the array `sigs` of length `n`.
+If the operation is successful, `i` is set to `SIZE_MAX`.
+Otherwise the registering is stopped at the first failure and
+`i` is set the index of the first signal that failed to be registered.
 */
 size_t sigs_register(int const*, size_t);
 
 /*
 This procedure returns `true` if a signal has not been caught.
+Otherwise `false` is returned.
 */
 bool sigs_unset(void);
 
 /*
 This procedure returns `true` if a signal has been caught.
+Otherwise `false` is returned.
 */
 bool sigs_set(void);
 
 /*
-This procedure returns `true` if
-a signal below the representable minimum (negative) has been caught.
+This procedure returns `true`
+if a signal below the representable minimum (negative) has been caught.
+Otherwise `false` is returned.
 */
 bool sigs_under(void);
 
 /*
-The call `sigs_normal(signum)` returns `true` if
-a normal signal (with a small magnitude) has been caught and
-copies its value into `signum` if it is not `NULL`.
-Otherwise `false` is returned.
+The call `sigs_normal(ptr)` returns `true`
+if a normal signal (with a small enough magnitude) has been caught and
+copies its value into `ptr` if `ptr` is not `NULL`.
+Otherwise `false` is returned and no copying is done.
 */
 bool sigs_normal(int*);
 
 /*
 This procedure returns `true` if a null signal (zero) has been caught.
+Otherwise `false` is returned.
 */
 bool sigs_null(void);
 
 /*
-This procedure returns `true` if
-a signal above the representable maximum (positive) has been caught.
+This procedure returns `true`
+if a signal above the representable maximum (positive) has been caught.
+Otherwise `false` is returned.
 */
 bool sigs_over(void);
 
 /*
-This procedure forgets any previously caught signals.
-Calling `sigs_forget` before the first use is not necessary.
+The call `sigs_forget()` forgets about any previously caught signals.
+Calling `sigs_forget` before using any other signal handling procedures
+from this compilation unit is not necessary.
 */
 void sigs_forget(void);
 
 /*
-This procedure calls `sigs_normal` and then `sigs_forget`.
+The statement `p = sigs_use(ptr)` is equivalent
+to `p = sigs_normal(ptr)` followed by `sigs_forget()` atomically.
 */
 bool sigs_use(int*);
 

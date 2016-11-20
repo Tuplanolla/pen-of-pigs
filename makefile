@@ -24,7 +24,7 @@ flags=-DNDEBUG -Ofast -s -w
 endif
 endif
 
-flags+=-Wno-unused-function -Wno-unused-parameter # temporary
+flags+=-Wno-unused-function # temporary
 
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
@@ -49,7 +49,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: apxtime.o err.o flt.o nth.o qho.o sigs.o size.o
+qho: apxtime.o err.o flt.o nth.o phys.o qho.o sigs.o size.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

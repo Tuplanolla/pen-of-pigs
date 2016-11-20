@@ -1,6 +1,7 @@
 #include "apxtime.h"
 #include "err.h"
 #include "flt.h"
+#include "phys.h"
 #include "sigs.h"
 #include "size.h"
 #include <assert.h>
@@ -17,12 +18,12 @@
 
 // Static Constants (N) -------------------------------------------------------
 
-#define NDIM 3
+#define NDIM 2
 #define NPOLY 4
 #define NBEAD 8
 #define NTSTEP (1 << 4)
-#define NPSTEP (1 << 24)
-#define NRSTEP (1 << 14)
+#define NPSTEP (1 << 16)
+#define NRSTEP (1 << 8)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -271,7 +272,7 @@ static void disp_drift(FILE* const fp) {
 static void save_esl(void) {
   FILE* const fp = fopen("qho-ensemble.data", "w");
   if (fp == NULL)
-    halt(fopen);
+    err_abort(fopen);
 
   disp_poly(fp);
 
@@ -279,6 +280,10 @@ static void save_esl(void) {
 }
 
 // Physical Moves (move) ------------------------------------------------------
+
+static void unmove_null(void) {}
+
+static void move_null(void) {}
 
 static void unmove_trial(void) {
   size_t const ipoly = napkin.history.trial.ipoly;
@@ -329,8 +334,18 @@ static void move_displace(size_t const ipoly) {
 
 // Adjustments (adjust) -------------------------------------------------------
 
-static void adjust_dx(void) {
-  napkin.dx *= (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
+static double ratio(void) {
+  return (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
+}
+
+static void adjust_always(void) {
+  napkin.dx *= ratio();
+}
+
+static void adjust_factor(double const factor) {
+  double const p = ratio();
+
+  napkin.dx *= p > factor || p < 1 / factor ? p : 1;
 }
 
 // Constants () ---------------------------------------------------------------
@@ -449,41 +464,30 @@ static void status(void) {
 static void work(void) {
   choice(subwork());
 
-  if ((napkin.accepted + napkin.rejected) % 256 == 0)
-    adjust_dx();
+  adjust_factor(1.25);
 
   int signum;
   if (sigs_use(&signum) && signum == SIGUSR1)
     status();
 }
 
-static void nop(void) {}
-
 static double Vee2(double const r2) {
   return lj6122(r2, epsilon, gsl_pow_2(sigma));
 }
 
-static double identity(double const r) {
-  return r;
-}
-
-static double zeroid(double const r) {
-  return 0;
-}
-
 static void not_main(void) {
-  reset();
+  err_reset();
 
   int const sigs[] = {SIGUSR1, SIGUSR2};
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
-    halt(sigs_register);
+    err_abort(sigs_register);
 
   napkin.L = 5;
   napkin.m = 1;
   napkin.dx = 2;
   napkin.beta = 1;
   napkin.V2 = Vee2;
-  napkin.V2cl = zeroid;
+  napkin.V2cl = zero;
   napkin.K2 = identity;
   napkin.K2cl = identity;
 
@@ -494,14 +498,14 @@ static void not_main(void) {
 
   napkin.tau = napkin.beta / NBEAD;
 
-  napkin.undo = nop;
+  napkin.undo = unmove_null;
 
   conf_circlatt();
   force_close();
 
   FILE* const driftfp = fopen("qho-drift.data", "w");
   if (driftfp == NULL)
-    halt(fopen);
+    err_abort(fopen);
 
   disp_drift(driftfp); // Just to prevent empty data files.
 

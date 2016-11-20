@@ -1,3 +1,4 @@
+#include "exts.h"
 #include "sigs.h"
 #include <limits.h>
 #include <signal.h>
@@ -41,14 +42,28 @@ void sigs_handler(int const signum) {
     SIGS_UNSET;
 }
 
-size_t sigs_register(int const* const xs, size_t const n) {
+/*
+This is possible if `signal` provides
+BSD semantics instead of System V semantics,
+but why bother with `signal` when `sigaction` exists?
+*/
+__attribute__ ((__unused__))
+static size_t _sigs_register(int const* const sigs, size_t const n) {
+  for (size_t i = 0; i < n; ++i)
+    if (signal(sigs[i], sigs_handler) == SIG_ERR)
+      return i;
+
+  return SIZE_MAX;
+}
+
+size_t sigs_register(int const* const sigs, size_t const n) {
   struct sigaction sa;
   sa.sa_handler = sigs_handler;
   sigfillset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
 
   for (size_t i = 0; i < n; ++i)
-    if (sigaction(xs[i], &sa, NULL) == -1)
+    if (sigaction(sigs[i], &sa, NULL) == -1)
       return i;
 
   return SIZE_MAX;
@@ -66,13 +81,13 @@ bool sigs_under(void) {
   return sig == SIGS_MIN;
 }
 
-bool sigs_normal(int* const signum) {
+bool sigs_normal(int* const ptr) {
   sig_atomic_t const n = sig;
 
   bool const p = n >= SIGS_MIN && n <= SIGS_MAX;
 
-  if (p && signum != NULL)
-    *signum = (int) n;
+  if (p && ptr != NULL)
+    *ptr = (int) n;
 
   return p;
 }
@@ -89,10 +104,10 @@ void sigs_forget(void) {
   sig = SIGS_UNSET;
 }
 
-bool sigs_use(int* const signum) {
+bool sigs_use(int* const ptr) {
   lock = LOCK_ON;
 
-  bool const p = sigs_normal(signum);
+  bool const p = sigs_normal(ptr);
   if (p)
     sigs_forget();
 

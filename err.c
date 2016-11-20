@@ -8,7 +8,7 @@
 
 static double t0 = 0;
 
-void reset(void) {
+void err_reset(void) {
   t0 = now();
 }
 
@@ -20,8 +20,8 @@ The handling of `errno` respects the following statement from N1570.
 > provided the use of errno is not documented
 > in the description of the function in this International Standard.
 */
-void warn_with(char const* const func, char const* const file,
-    size_t const line, char const* const s) {
+void err_msg_with(char const* const func, char const* const file,
+    size_t const line, char const* const str) {
   int const n = errno;
 
   double const t1 = now();
@@ -30,6 +30,6 @@ void warn_with(char const* const func, char const* const file,
       t1 - t0, (size_t) getpid(), func, file, line) != EOF) {
     errno = n;
 
-    perror(s);
+    perror(str);
   }
 }

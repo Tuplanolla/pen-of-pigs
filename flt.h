@@ -6,7 +6,7 @@
 #define M_2PI 6.283185307179586
 
 /*
-The call `size_cmp(x, y)` returns
+The call `cmp(x, y)` returns
 
 * `-1` if `x < y`,
 * `1` if `x > y` and
@@ -16,56 +16,43 @@ __attribute__ ((__const__))
 int cmp(double, double);
 
 /*
-The call `wrap(x, y)` returns such `z` that
-`0 <= z < y` and `z = x - n * y` for some integer `n`.
+The statement `z = wrap(x, y)` solves
+the periodic equation `z == x - n * y` for `z`,
+where `0 <= z < y` and `n` is some integer.
 */
 __attribute__ ((__const__))
 double wrap(double, double);
 
 /*
-The call `midpoint(x, y)` returns the mean of `x` and `y`.
+The call `midpoint(x, y)` returns the arithmetic mean of `x` and `y`.
 */
 __attribute__ ((__const__))
 double midpoint(double, double);
 
 /*
-The call `lerp(x0, x1, y0, y1, x)` returns the solution
-for `y` in the linear interpolation equation
-`(x - x0) / (x1 - x0) == (y - y0) / (y1 - y0)`.
+The statement `y = lerp(x0, x1, y0, y1, x)` solves
+the linear interpolation equation
+`(x - x0) / (x1 - x0) == (y - y0) / (y1 - y0)` for `y`.
 */
 __attribute__ ((__const__))
 double lerp(double, double, double, double, double);
 
 /*
-Lennard--Jones potential 6--12.
+The statement `x = identity(x)` does not do anything.
 */
 __attribute__ ((__const__))
-double lj612(double, double, double);
+double identity(double);
 
 /*
-Lennard--Jones 6--12 potential from squared arguments (for speed).
+The call `y = zero(x)` returns `0`.
 */
 __attribute__ ((__const__))
-double lj6122(double, double, double);
+double zero(double);
 
 /*
-Harmonic potential 6--12.
+The call `y = one(x)` returns `1`.
 */
 __attribute__ ((__const__))
-double harm(double, double, double);
-
-/*
-Harmonic potential 6--12 from squared arguments (for speed).
-*/
-__attribute__ ((__const__))
-double harm2(double, double, double);
-
-/*
-The call `hermite(n, x)` returns the value
-of the `n`th Hermite polynomial at `x`.
-Note that the function is only defined when `0 <= n < 8`.
-*/
-__attribute__ ((__const__))
-double hermite(unsigned int, double);
+double one(double);
 
 #endif
