@@ -31,3 +31,8 @@ double zero(__attribute__ ((__unused__)) double const x) {
 double one(__attribute__ ((__unused__)) double const x) {
   return 1;
 }
+
+double periodic(double const x, double const p) {
+  double const p2 = p / 2;
+  return x > p2 ? x - p : x < -p2 ? x + p : x;
+}

@@ -44,15 +44,22 @@ __attribute__ ((__const__))
 double identity(double);
 
 /*
-The call `y = zero(x)` returns `0`.
+The call `zero(x)` returns `0`.
 */
 __attribute__ ((__const__))
 double zero(double);
 
 /*
-The call `y = one(x)` returns `1`.
+The call `one(x)` returns `1`.
 */
 __attribute__ ((__const__))
 double one(double);
+
+/*
+The statements `y = periodic(x, p)` sets `y` to `x` with period `p`.
+This description is too vague.
+*/
+__attribute__ ((__const__))
+double periodic(double, double);
 
 #endif

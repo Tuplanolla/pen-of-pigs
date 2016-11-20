@@ -49,11 +49,12 @@ union hist {
   struct {
     size_t ipoly;
     size_t ibead;
-    double d[NDIM];
+    struct bead r;
   } trial;
   struct {
-    int dummy;
-  } bisect;
+    size_t ipoly;
+    struct poly R;
+  } displace;
 };
 
 struct napkin {
@@ -82,20 +83,12 @@ static struct napkin napkin;
 
 // Vector Math (bead) ---------------------------------------------------------
 
-static struct bead bead_add(struct bead const r0, struct bead const r1) {
-  struct bead r;
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = r0.d[idim] + r1.d[idim];
-
-  return r;
-}
-
+// This is subtly wrong, because distances are not symmetric.
 static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = r0.d[idim] - r1.d[idim];
+    r.d[idim] = periodic(r1.d[idim] - r0.d[idim], napkin.L);
 
   return r;
 }
@@ -286,11 +279,8 @@ static void unmove_null(void) {}
 static void move_null(void) {}
 
 static void unmove_trial(void) {
-  size_t const ipoly = napkin.history.trial.ipoly;
-  size_t const ibead = napkin.history.trial.ibead;
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    napkin.R[ipoly].r[ibead].d[idim] = napkin.history.trial.d[idim];
+  napkin.R[napkin.history.trial.ipoly].r[napkin.history.trial.ibead] =
+    napkin.history.trial.r;
 }
 
 static void move_trial(size_t const ipoly, size_t const ibead) {
@@ -298,37 +288,47 @@ static void move_trial(size_t const ipoly, size_t const ibead) {
 
   napkin.history.trial.ipoly = ipoly;
   napkin.history.trial.ibead = ibead;
+  napkin.history.trial.r = napkin.R[ipoly].r[ibead];
 
-  for (size_t idim = 0; idim < NDIM; ++idim) {
-    napkin.history.trial.d[idim] = napkin.R[ipoly].r[ibead].d[idim];
-
+  for (size_t idim = 0; idim < NDIM; ++idim)
     napkin.R[ipoly].r[ibead].d[idim] = wrap(
         napkin.R[ipoly].r[ibead].d[idim] +
         napkin.dx * gsl_ran_flat(napkin.rng, -1, 1),
-      napkin.L);
+        napkin.L);
+}
+
+static void unmove_displace(void) {
+  napkin.R[napkin.history.displace.ipoly] = napkin.history.displace.R;
+}
+
+static void move_displace(size_t const ipoly) {
+  napkin.undo = unmove_displace;
+
+  napkin.history.displace.ipoly = ipoly;
+  napkin.history.displace.R = napkin.R[ipoly];
+
+  for (size_t idim = 0; idim < NDIM; ++idim) {
+    double const x = gsl_ran_gaussian(napkin.rng,
+        sqrt(napkin.lambda * napkin.tau));
+
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      napkin.R[ipoly].r[ibead].d[idim] =
+        wrap(napkin.R[ipoly].r[ibead].d[idim] + x, napkin.L);
   }
 }
 
+static void unmove_bisect(size_t const ipoly, size_t const ibead) {
+  err_abort(NULL);
+}
+
 static void move_bisect(size_t const ipoly, size_t const ibead) {
+  err_abort(NULL);
+
   for (size_t idim = 0; idim < NDIM; ++idim) {
     napkin.R[ipoly].r[ibead].d[idim] =
       gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau)) +
       midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
           napkin.R[ipoly].r[size_wrap(ibead + 1, NBEAD)].d[idim]);
-  }
-}
-
-static void move_multlev(size_t const ipoly, size_t const ibead,
-    size_t const nlev) {
-}
-
-static void move_displace(size_t const ipoly) {
-  for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const r =
-      gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau));
-
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] += r;
   }
 }
 
@@ -356,17 +356,6 @@ static double const sigma = 1;
 
 // System-Specific Quantities () ----------------------------------------------
 
-static double Sone(size_t const ipoly, size_t const ibead) {
-  /*
-  return Kone(napkin, ipoly, ibead) + Uone(napkin, ipoly, ibead);
-  */
-  return 0;
-}
-
-static double Stotal(void) {
-  return 0;
-}
-
 static double Kbead(size_t const ipoly, size_t const ibead) {
   double K = 0;
 
@@ -387,17 +376,25 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
   return K;
 }
 
-static double Ktotal(void) {
+static double Kpoly(size_t const ipoly) {
   double K = 0;
 
-  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      K += Kbead(ipoly, ibead);
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+    K += Kbead(ipoly, ibead);
 
   return K;
 }
 
-static double Vbead(size_t const ibead) {
+static double Ktotal(void) {
+  double K = 0;
+
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    K += Kpoly(ipoly);
+
+  return K;
+}
+
+static double Vbeads(size_t const ibead) {
   double V = 0;
 
   bool const p = ibead == 0 || ibead == NBEAD - 1;
@@ -415,30 +412,51 @@ static double Vtotal(void) {
   double V = 0;
 
   for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-    V += Vbead(ibead);
+    V += Vbeads(ibead);
 
   return V;
 }
 
+static double Stotal(void) {
+  return Vtotal() + Ktotal();
+}
+
 // Work Horses () -------------------------------------------------------------
 
-static double subwork(void) {
+typedef double (* worker)(void);
+
+static double work_trial(void) {
   size_t const ipoly = (size_t) gsl_rng_uniform_int(napkin.rng, NPOLY);
   size_t const ibead = (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD);
 
-  // Local `Vbead`, because the rest stays the same.
-  double const T0 = Vbead(ibead);
+  // Local `Vbeads`, because the rest stays the same.
+  double const T0 = Vbeads(ibead);
   double const K0 = Kbead(ipoly, ibead);
 
   move_trial(ipoly, ibead);
 
-  double const T1 = Vbead(ibead);
+  double const T1 = Vbeads(ibead);
   double const K1 = Kbead(ipoly, ibead);
 
   double const DeltaS_T = napkin.tau * (T1 - T0);
   double const DeltaS_K = (1 / (4 * napkin.lambda * napkin.tau)) * (K1 - K0);
 
   return DeltaS_T + DeltaS_K;
+}
+
+static double work_displace(void) {
+  size_t const ipoly = (size_t) gsl_rng_uniform_int(napkin.rng, NPOLY);
+
+  // Global `Vtotal`, because `K` is unchanged (maybe not for permutations).
+  double const T0 = Vtotal();
+
+  move_displace(ipoly);
+
+  double const T1 = Vtotal();
+
+  double const DeltaS_T = napkin.tau * (T1 - T0);
+
+  return DeltaS_T;
 }
 
 static void choice(double const DeltaS) {
@@ -457,12 +475,23 @@ static void choice(double const DeltaS) {
   }
 }
 
+static worker subwork(void) {
+  switch ((napkin.accepted + napkin.rejected) % 2) {
+    case 0:
+      return work_trial;
+    case 1:
+      return work_displace;
+  }
+
+  err_abort(NULL);
+}
+
 static void status(void) {
   save_esl();
 }
 
 static void work(void) {
-  choice(subwork());
+  choice(subwork()());
 
   adjust_factor(1.25);
 
