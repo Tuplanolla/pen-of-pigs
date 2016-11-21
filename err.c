@@ -1,5 +1,5 @@
-#include "apxtime.h"
 #include "err.h"
+#include "secs.h"
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -9,7 +9,7 @@
 static double t0 = 0;
 
 void err_reset(void) {
-  t0 = now();
+  t0 = secs_now();
 }
 
 /*
@@ -24,7 +24,7 @@ void err_msg_with(char const* const func, char const* const file,
     size_t const line, char const* const str) {
   int const n = errno;
 
-  double const t1 = now();
+  double const t1 = secs_now();
 
   if (fprintf(stderr, "[%f] (%zu) <%s> %s:%zu: ",
       t1 - t0, (size_t) getpid(), func, file, line) != EOF) {

@@ -1,6 +1,5 @@
 #include "err.h"
-#include "flt.h"
-#include "phys.h"
+#include "fp.h"
 #include "sigs.h"
 #include "size.h"
 #include <assert.h>
@@ -9,21 +8,21 @@
 #include <gsl/gsl_rng.h>
 #include <limits.h>
 #include <signal.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 // Static Constants (N) -------------------------------------------------------
 
-#define NDIM 2
-#define NPOLY 4
-#define NBEAD 8
-#define NSTAB (1 << 6)
-#define NTSTEP (1 << 4)
-#define NPSTEP (1 << 16)
-#define NRSTEP (1 << 8)
+#define NDIM ((size_t) 2)
+#define NPOLY ((size_t) 4)
+#define NBEAD ((size_t) 8)
+#define NSTAB ((size_t) 1 << 6)
+#define NTSTEP ((size_t) 1 << 4)
+#define NPSTEP ((size_t) 1 << 16)
+#define NRSTEP ((size_t) 1 << 8)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -55,10 +54,6 @@ union hist {
     size_t ipoly;
     struct poly R;
   } displace;
-  struct {
-    size_t ipoly;
-    struct bead r;
-  } fastlace;
 };
 
 struct napkin {
@@ -68,7 +63,6 @@ struct napkin {
   double dx; // Indeed.
   void (* undo)(void);
   union hist history;
-  double m;
   double L;
   double beta;
   double lambda;
@@ -92,7 +86,7 @@ static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = periodic(r1.d[idim] - r0.d[idim], napkin.L);
+    r.d[idim] = fp_periodic(r1.d[idim] - r0.d[idim], napkin.L);
 
   return r;
 }
@@ -295,7 +289,7 @@ static void move_trial(size_t const ipoly, size_t const ibead) {
   napkin.history.trial.r = napkin.R[ipoly].r[ibead];
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    napkin.R[ipoly].r[ibead].d[idim] = wrap(
+    napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
         napkin.R[ipoly].r[ibead].d[idim] +
         napkin.dx * gsl_ran_flat(napkin.rng, -1, 1),
         napkin.L);
@@ -315,36 +309,7 @@ static void move_displace(size_t const ipoly) {
     double const x = napkin.dx * gsl_ran_flat(napkin.rng, -1, 1);
 
     for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] = wrap(
-          napkin.R[ipoly].r[ibead].d[idim] + x,
-          napkin.L);
-  }
-}
-
-static void unmove_fastlace(void) {
-  size_t const ipoly = napkin.history.fastlace.ipoly;
-
-  for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const x = napkin.history.fastlace.r.d[idim];
-
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] = wrap(
-          napkin.R[ipoly].r[ibead].d[idim] - x,
-          napkin.L);
-  }
-}
-
-static void move_fastlace(size_t const ipoly) {
-  napkin.undo = unmove_fastlace;
-
-  napkin.history.fastlace.ipoly = ipoly;
-
-  for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const x = napkin.dx * gsl_ran_flat(napkin.rng, -1, 1);
-    napkin.history.fastlace.r.d[idim] = x;
-
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] = wrap(
+      napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
           napkin.R[ipoly].r[ibead].d[idim] + x,
           napkin.L);
   }
@@ -360,7 +325,7 @@ static void move_bisect(size_t const ipoly, size_t const ibead) {
   for (size_t idim = 0; idim < NDIM; ++idim) {
     napkin.R[ipoly].r[ibead].d[idim] =
       gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau)) +
-      midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
+      fp_midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
           napkin.R[ipoly].r[size_wrap(ibead + 1, NBEAD)].d[idim]);
   }
 }
@@ -377,7 +342,7 @@ static size_t total(void) {
 }
 
 static void adjust_yes(void) {
-  napkin.dx = wrap(napkin.dx * ratio(), napkin.L);
+  napkin.dx = fp_wrap(napkin.dx * ratio(), napkin.L);
 }
 
 static void adjust_maybe(void) {
@@ -388,8 +353,10 @@ static void adjust_maybe(void) {
 // Constants () ---------------------------------------------------------------
 
 static double const hbar = 1;
-static double const epsilon = 1;
-static double const sigma = 1;
+static double const m = 1;
+static double const epsilon = 1; // L--J 6--12 P
+static double const sigma = 1; // L--J 6--12 P
+static double const omega = 1; // HP
 
 // Estimators (est) -----------------------------------------------------------
 
@@ -525,7 +492,14 @@ static void choice(double const DeltaS) {
   }
 }
 
-static void status(void) {
+static void status_line(void) {
+  printf("z = (%zu + %zu) / (%zu + %zu) = %zu %%\ndx = %f\n",
+      napkin.accepted, napkin.rejected, NTSTEP, NPSTEP,
+      100 * (napkin.accepted + napkin.rejected) / (NTSTEP + NPSTEP),
+      napkin.dx);
+}
+
+static void status_file(void) {
   save_esl();
 }
 
@@ -539,12 +513,35 @@ static void work(void) {
   adjust_maybe();
 
   int signum;
-  if (sigs_use(&signum) && signum == SIGUSR1)
-    status();
+  if (sigs_use(&signum))
+    switch (signum) {
+      case SIGUSR1:
+        status_line();
+        break;
+      case SIGUSR2:
+        status_file();
+        break;
+    }
 }
 
-static double Vee2(double const r2) {
-  return lj6122(r2, epsilon, gsl_pow_2(sigma));
+static double lj612(double const r) {
+  double const sigmar6 = gsl_pow_6(sigma / r);
+
+  return 4 * epsilon * (gsl_pow_2(sigmar6) - sigmar6);
+}
+
+static double lj6122(double const r2) {
+  double const sigmar2 = gsl_pow_2(sigma) / r2;
+
+  return 4 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
+}
+
+static double harm(double const r) {
+  return m * gsl_pow_2(omega * r) / 2;
+}
+
+static double harm2(double const r2) {
+  return m * gsl_pow_2(omega) * r2 / 2;
 }
 
 static void not_main(void) {
@@ -557,15 +554,14 @@ static void not_main(void) {
   napkin.accepted = 0;
   napkin.rejected = 0;
   napkin.dx = 1;
-  napkin.m = 1;
   napkin.L = 5;
   napkin.beta = 1;
-  napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
+  napkin.lambda = gsl_pow_2(hbar) / (2 * m);
   napkin.tau = napkin.beta / NBEAD;
-  napkin.V2 = Vee2;
-  napkin.V2cl = zero;
-  napkin.K2 = identity;
-  napkin.K2cl = identity;
+  napkin.V2 = lj6122;
+  napkin.V2cl = fp_zero;
+  napkin.K2 = fp_identity;
+  napkin.K2cl = fp_identity;
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -606,7 +602,7 @@ static void not_main(void) {
 
   fclose(driftfp);
 
-  status();
+  status_file();
 
   gsl_rng_free(napkin.rng);
 }

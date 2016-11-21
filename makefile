@@ -49,7 +49,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: apxtime.o err.o flt.o nth.o phys.o qho.o sigs.o size.o
+qho: err.o fp.o nth.o phys.o qho.o secs.o sigs.o size.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h
