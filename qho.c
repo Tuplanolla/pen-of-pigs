@@ -1,4 +1,3 @@
-#include "apxtime.h"
 #include "err.h"
 #include "flt.h"
 #include "phys.h"
@@ -21,6 +20,7 @@
 #define NDIM 2
 #define NPOLY 4
 #define NBEAD 8
+#define NSTAB (1 << 6)
 #define NTSTEP (1 << 4)
 #define NPSTEP (1 << 16)
 #define NRSTEP (1 << 8)
@@ -55,6 +55,10 @@ union hist {
     size_t ipoly;
     struct poly R;
   } displace;
+  struct {
+    size_t ipoly;
+    struct bead r;
+  } fastlace;
 };
 
 struct napkin {
@@ -70,9 +74,9 @@ struct napkin {
   double lambda;
   double tau;
   double (* V2)(double);
-  double (* V2cl)(double);
   double (* K2)(double);
-  double (* K2cl)(double);
+  double (* V2cl)(double); // Closure properties.
+  double (* K2cl)(double); // These may be bad for assumptions in displacement.
   double energy;
   struct poly R[NPOLY];
 };
@@ -317,6 +321,35 @@ static void move_displace(size_t const ipoly) {
   }
 }
 
+static void unmove_fastlace(void) {
+  size_t const ipoly = napkin.history.fastlace.ipoly;
+
+  for (size_t idim = 0; idim < NDIM; ++idim) {
+    double const x = napkin.history.fastlace.r.d[idim];
+
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      napkin.R[ipoly].r[ibead].d[idim] = wrap(
+          napkin.R[ipoly].r[ibead].d[idim] - x,
+          napkin.L);
+  }
+}
+
+static void move_fastlace(size_t const ipoly) {
+  napkin.undo = unmove_fastlace;
+
+  napkin.history.fastlace.ipoly = ipoly;
+
+  for (size_t idim = 0; idim < NDIM; ++idim) {
+    double const x = napkin.dx * gsl_ran_flat(napkin.rng, -1, 1);
+    napkin.history.fastlace.r.d[idim] = x;
+
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      napkin.R[ipoly].r[ibead].d[idim] = wrap(
+          napkin.R[ipoly].r[ibead].d[idim] + x,
+          napkin.L);
+  }
+}
+
 static void unmove_bisect(size_t const ipoly, size_t const ibead) {
   err_abort(NULL);
 }
@@ -335,17 +368,21 @@ static void move_bisect(size_t const ipoly, size_t const ibead) {
 // Adjustments (adjust) -------------------------------------------------------
 
 static double ratio(void) {
-  return (double) (napkin.accepted + 1) / (double) (napkin.rejected + 1);
+  return (double) (napkin.accepted + NSTAB) /
+    (double) (napkin.rejected + NSTAB);
 }
 
-static void adjust_always(void) {
+static size_t total(void) {
+  return napkin.accepted + napkin.rejected;
+}
+
+static void adjust_yes(void) {
   napkin.dx = wrap(napkin.dx * ratio(), napkin.L);
 }
 
-static void adjust_factor(double const factor) {
-  double const p = ratio();
-  napkin.dx = wrap(napkin.dx * (p > factor ? p : p < 1 / factor ? 1 / p : 1),
-    napkin.L);
+static void adjust_maybe(void) {
+  if (total() % NSTAB == 0)
+    adjust_yes();
 }
 
 // Constants () ---------------------------------------------------------------
@@ -499,9 +536,7 @@ static void work(void) {
       sizeof workers / sizeof *workers);
   choice(workers[iworker]());
 
-  if (napkin.accepted + napkin.rejected > 1 << 8)
-    // adjust_always();
-    adjust_factor(1.25);
+  adjust_maybe();
 
   int signum;
   if (sigs_use(&signum) && signum == SIGUSR1)
@@ -521,7 +556,7 @@ static void not_main(void) {
 
   napkin.accepted = 0;
   napkin.rejected = 0;
-  napkin.dx = 2;
+  napkin.dx = 1;
   napkin.m = 1;
   napkin.L = 5;
   napkin.beta = 1;

@@ -36,7 +36,7 @@ plot:
 	gnuplot -p qho-ensemble-3d.gp
 
 run: build
-	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 ./qho
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho
 
 check: build
 	valgrind --leak-check=full --tool=memcheck ./qho
