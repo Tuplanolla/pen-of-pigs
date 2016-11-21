@@ -56,8 +56,8 @@ __attribute__ ((__const__))
 double one(double);
 
 /*
-The statements `y = periodic(x, p)` sets `y` to `x` with period `p`.
-This description is too vague.
+The call `periodic(x, p)` minimizes the periodicity expression `x + n * p`,
+where `n` is some integer.
 */
 __attribute__ ((__const__))
 double periodic(double, double);

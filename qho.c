@@ -59,11 +59,11 @@ union hist {
 
 struct napkin {
   gsl_rng* rng;
-  size_t accepted;
-  size_t rejected;
+  size_t accepted; // These should be per-move.
+  size_t rejected; // Yes.
+  double dx; // Indeed.
   void (* undo)(void);
   union hist history;
-  double dx;
   double m;
   double L;
   double beta;
@@ -83,7 +83,7 @@ static struct napkin napkin;
 
 // Vector Math (bead) ---------------------------------------------------------
 
-// This is subtly wrong, because distances are not symmetric.
+// This only takes the closest periodic image into account.
 static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
@@ -308,12 +308,12 @@ static void move_displace(size_t const ipoly) {
   napkin.history.displace.R = napkin.R[ipoly];
 
   for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const x = gsl_ran_gaussian(napkin.rng,
-        sqrt(napkin.lambda * napkin.tau));
+    double const x = napkin.dx * gsl_ran_flat(napkin.rng, -1, 1);
 
     for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] =
-        wrap(napkin.R[ipoly].r[ibead].d[idim] + x, napkin.L);
+      napkin.R[ipoly].r[ibead].d[idim] = wrap(
+          napkin.R[ipoly].r[ibead].d[idim] + x,
+          napkin.L);
   }
 }
 
@@ -339,13 +339,13 @@ static double ratio(void) {
 }
 
 static void adjust_always(void) {
-  napkin.dx *= ratio();
+  napkin.dx = wrap(napkin.dx * ratio(), napkin.L);
 }
 
 static void adjust_factor(double const factor) {
   double const p = ratio();
-
-  napkin.dx *= p > factor || p < 1 / factor ? p : 1;
+  napkin.dx = wrap(napkin.dx * (p > factor ? p : p < 1 / factor ? 1 / p : 1),
+    napkin.L);
 }
 
 // Constants () ---------------------------------------------------------------
@@ -353,6 +353,19 @@ static void adjust_factor(double const factor) {
 static double const hbar = 1;
 static double const epsilon = 1;
 static double const sigma = 1;
+
+// Estimators (est) -----------------------------------------------------------
+
+static double est_K(void) {
+  double N = NAN, Rip1 = NAN, Ri = NAN; // ??
+  double const cs = 2 * napkin.lambda * napkin.tau;
+  return (NDIM * N * log(M_2PI * cs) + gsl_pow_2(Rip1 - Ri) / cs) / 2;
+}
+
+static double est_V(void) {
+  double VRip1 = NAN, VRi = NAN; // ??
+  return napkin.tau * (VRi + VRip1) / 2;
+}
 
 // System-Specific Quantities () ----------------------------------------------
 
@@ -475,25 +488,20 @@ static void choice(double const DeltaS) {
   }
 }
 
-static worker subwork(void) {
-  switch ((napkin.accepted + napkin.rejected) % 2) {
-    case 0:
-      return work_trial;
-    case 1:
-      return work_displace;
-  }
-
-  err_abort(NULL);
-}
-
 static void status(void) {
   save_esl();
 }
 
 static void work(void) {
-  choice(subwork()());
+  worker const workers[] = {work_trial, work_displace};
 
-  adjust_factor(1.25);
+  size_t const iworker = (size_t) gsl_rng_uniform_int(napkin.rng,
+      sizeof workers / sizeof *workers);
+  choice(workers[iworker]());
+
+  if (napkin.accepted + napkin.rejected > 1 << 8)
+    // adjust_always();
+    adjust_factor(1.25);
 
   int signum;
   if (sigs_use(&signum) && signum == SIGUSR1)
@@ -511,10 +519,14 @@ static void not_main(void) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  napkin.L = 5;
-  napkin.m = 1;
+  napkin.accepted = 0;
+  napkin.rejected = 0;
   napkin.dx = 2;
+  napkin.m = 1;
+  napkin.L = 5;
   napkin.beta = 1;
+  napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
+  napkin.tau = napkin.beta / NBEAD;
   napkin.V2 = Vee2;
   napkin.V2cl = zero;
   napkin.K2 = identity;
@@ -522,10 +534,6 @@ static void not_main(void) {
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
-
-  napkin.lambda = gsl_pow_2(hbar) / (2 * napkin.m);
-
-  napkin.tau = napkin.beta / NBEAD;
 
   napkin.undo = unmove_null;
 
@@ -536,7 +544,9 @@ static void not_main(void) {
   if (driftfp == NULL)
     err_abort(fopen);
 
-  disp_drift(driftfp); // Just to prevent empty data files.
+  // Just to prevent empty data files...
+  disp_drift(driftfp);
+  fflush(driftfp);
 
   for (size_t istep = 0, itstep = 0, ipstep = 0, irstep = 0;
       istep < NTSTEP + NPSTEP;
