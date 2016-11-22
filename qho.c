@@ -19,9 +19,8 @@
 #define NDIM ((size_t) 2)
 #define NPOLY ((size_t) 4)
 #define NBEAD ((size_t) 8)
-#define NSTAB ((size_t) 1 << 6)
 #define NTSTEP ((size_t) 1 << 4)
-#define NPSTEP ((size_t) 1 << 16)
+#define NPSTEP ((size_t) 1 << 8)
 #define NRSTEP ((size_t) 1 << 8)
 
 /*
@@ -94,12 +93,6 @@ struct napkin {
 };
 
 // Lost Souls () --------------------------------------------------------------
-
-static void nop(void) {}
-
-static double ratio(size_t const x, size_t const y) {
-  return (double) (y + NSTAB) / (double) (x + NSTAB);
-}
 
 static size_t ran_index(gsl_rng* const rng, size_t const n) {
   return (size_t) gsl_rng_uniform_int(rng, n);
@@ -286,7 +279,8 @@ Print parameters into stream `fp`.
 */
 static void disp_drift(FILE* const fp) {
   fprintf(fp, "%zu %f %f\n",
-      napkin.itstep + napkin.ipstep, napkin.params.ss.dx, napkin.params.comd.dx);
+      napkin.itstep + napkin.ipstep,
+      napkin.params.ss.dx, napkin.params.comd.dx);
 }
 
 // Saving into Data Files (save)
@@ -314,10 +308,28 @@ static void move_reject_ss(void) {
   ++napkin.params.ss.rejected;
 }
 
+/*
+r <=> a: z >=< 1
+r = 0: z = 3 / 2
+a = 0: z = 1 / 2
+*/
+static double surface(double const a, double const r) {
+  return 0.5 + a / (a + r);
+}
+
+/*
+r <=> a: z >=< 1
+r = 0: z = 1 + exp(-a)
+a = 0: z = 1 - exp(-r)
+*/
+static double another_surface(double const a, double const r) {
+  return 1 - exp(-a) + exp(-r);
+}
+
 static void move_adjust_ss(void) {
   napkin.params.ss.dx = napkin.params.ss.dx *
-    (0.5 + (double) napkin.params.ss.accepted /
-     (double) (napkin.params.ss.accepted + napkin.params.ss.rejected));
+    surface((double) napkin.params.ss.accepted,
+        (double) napkin.params.ss.rejected);
 }
 
 static void move_ss(size_t const ipoly, size_t const ibead) {
@@ -347,10 +359,9 @@ static void move_reject_comd(void) {
 }
 
 static void move_adjust_comd(void) {
-  napkin.params.comd.dx = fp_wrap(
-      napkin.params.comd.dx * ratio(napkin.params.comd.rejected,
-        napkin.params.comd.accepted),
-      napkin.L);
+  napkin.params.comd.dx = napkin.params.comd.dx *
+    another_surface((double) napkin.params.comd.accepted,
+        (double) napkin.params.comd.rejected);
 }
 
 static void move_comd(size_t const ipoly) {
@@ -540,6 +551,8 @@ static void choose(double const DeltaS) {
     else
       napkin.reject();
   }
+
+  napkin.adjust();
 }
 
 // Other Crap () --------------------------------------------------------------
@@ -586,10 +599,6 @@ static void not_main(void) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  napkin.accept = nop;
-  napkin.reject = nop;
-  napkin.adjust = nop;
-
   napkin.params.ss.accepted = 0;
   napkin.params.ss.rejected = 0;
   napkin.params.ss.dx = 1;
@@ -634,8 +643,6 @@ static void not_main(void) {
 
     choose(workers[ran_index(napkin.rng, NWORKERS)]());
 
-    napkin.adjust();
-
     int signum;
     if (sigs_use(&signum))
       switch (signum) {
@@ -669,6 +676,8 @@ static void not_main(void) {
 
   gsl_rng_free(napkin.rng);
 }
+
+// abstract mean/var, fix V/K scaling, find home for lost souls
 
 int main(void) {
   not_main();
