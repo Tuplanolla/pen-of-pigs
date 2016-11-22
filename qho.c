@@ -44,36 +44,66 @@ struct poly {
   struct bead r[NBEAD];
 };
 
-union hist {
-  struct {
-    size_t ipoly;
-    size_t ibead;
-    struct bead r;
-  } trial;
-  struct {
-    size_t ipoly;
-    struct poly R;
-  } displace;
-};
-
 struct napkin {
-  gsl_rng* rng;
-  size_t accepted; // These should be per-move.
-  size_t rejected; // Yes.
-  double dx; // Indeed.
-  void (* undo)(void);
-  union hist history;
-  double L;
+  gsl_rng* rng; // State of the random number generator.
+  struct {
+    struct {
+      size_t accepted;
+      size_t rejected;
+      double dx;
+    } ss; // Single slice.
+    struct {
+      size_t accepted;
+      size_t rejected;
+      double dx;
+    } comd; // Center of mass displacement.
+  } params; // Optimization parameters of each move.
+  union {
+    struct {
+      size_t ipoly;
+      size_t ibead;
+      struct bead r;
+    } ss;
+    struct {
+      size_t ipoly;
+      struct poly R;
+    } comd;
+  } history; // Undo history of the latest move.
+  void (* accept)(void); // Procedures for processing the latest move.
+  void (* reject)(void);
+  void (* adjust)(void);
+  size_t itstep; // Thermalization steps taken.
+  size_t ipstep; // Production steps taken.
+  size_t irstep; // Recording steps taken.
+  double L; // Lattice constant.
   double beta;
   double lambda;
   double tau;
-  double (* V2)(double);
-  double (* K2)(double);
-  double (* V2cl)(double); // Closure properties.
-  double (* K2cl)(double); // These may be bad for assumptions in displacement.
-  double energy;
+  double (* V2)(double); // Potential energy.
+  double (* K2)(double); // Kinetic energy.
+  double (* V2end)(double); // Potential energy at open ends.
+  double (* K2end)(double); // Kinetic energy at open ends.
+  struct {
+    size_t N; // Samples.
+    double mean; // Mean.
+    double M2; // Second moment.
+    double var; // Variance.
+    double stderr; // Standard error of the mean.
+  } tdE; // Thermodynamic estimator.
   struct poly R[NPOLY];
 };
+
+// Lost Souls () --------------------------------------------------------------
+
+static void nop(void) {}
+
+static double ratio(size_t const x, size_t const y) {
+  return (double) (y + NSTAB) / (double) (x + NSTAB);
+}
+
+static size_t ran_index(gsl_rng* const rng, size_t const n) {
+  return (size_t) gsl_rng_uniform_int(rng, n);
+}
 
 // Global State () ------------------------------------------------------------
 
@@ -252,10 +282,11 @@ static void disp_poly(FILE* const fp) {
 }
 
 /*
-Print trial displacement into stream `fp`.
+Print parameters into stream `fp`.
 */
 static void disp_drift(FILE* const fp) {
-  fprintf(fp, "%zu %f\n", napkin.accepted + napkin.rejected, napkin.dx);
+  fprintf(fp, "%zu %f %f\n",
+      napkin.itstep + napkin.ipstep, napkin.params.ss.dx, napkin.params.comd.dx);
 }
 
 // Saving into Data Files (save)
@@ -272,41 +303,66 @@ static void save_esl(void) {
 
 // Physical Moves (move) ------------------------------------------------------
 
-static void unmove_null(void) {}
-
-static void move_null(void) {}
-
-static void unmove_trial(void) {
-  napkin.R[napkin.history.trial.ipoly].r[napkin.history.trial.ibead] =
-    napkin.history.trial.r;
+static void move_accept_ss(void) {
+  ++napkin.params.ss.accepted;
 }
 
-static void move_trial(size_t const ipoly, size_t const ibead) {
-  napkin.undo = unmove_trial;
+static void move_reject_ss(void) {
+  napkin.R[napkin.history.ss.ipoly].r[napkin.history.ss.ibead] =
+    napkin.history.ss.r;
 
-  napkin.history.trial.ipoly = ipoly;
-  napkin.history.trial.ibead = ibead;
-  napkin.history.trial.r = napkin.R[ipoly].r[ibead];
+  ++napkin.params.ss.rejected;
+}
+
+static void move_adjust_ss(void) {
+  napkin.params.ss.dx = napkin.params.ss.dx *
+    (0.5 + (double) napkin.params.ss.accepted /
+     (double) (napkin.params.ss.accepted + napkin.params.ss.rejected));
+}
+
+static void move_ss(size_t const ipoly, size_t const ibead) {
+  napkin.accept = move_accept_ss;
+  napkin.reject = move_reject_ss;
+  napkin.adjust = move_adjust_ss;
+
+  napkin.history.ss.ipoly = ipoly;
+  napkin.history.ss.ibead = ibead;
+  napkin.history.ss.r = napkin.R[ipoly].r[ibead];
 
   for (size_t idim = 0; idim < NDIM; ++idim)
     napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
         napkin.R[ipoly].r[ibead].d[idim] +
-        napkin.dx * gsl_ran_flat(napkin.rng, -1, 1),
+        napkin.params.ss.dx * gsl_ran_flat(napkin.rng, -1, 1),
         napkin.L);
 }
 
-static void unmove_displace(void) {
-  napkin.R[napkin.history.displace.ipoly] = napkin.history.displace.R;
+static void move_accept_comd(void) {
+  ++napkin.params.comd.accepted;
 }
 
-static void move_displace(size_t const ipoly) {
-  napkin.undo = unmove_displace;
+static void move_reject_comd(void) {
+  napkin.R[napkin.history.comd.ipoly] = napkin.history.comd.R;
 
-  napkin.history.displace.ipoly = ipoly;
-  napkin.history.displace.R = napkin.R[ipoly];
+  ++napkin.params.comd.rejected;
+}
+
+static void move_adjust_comd(void) {
+  napkin.params.comd.dx = fp_wrap(
+      napkin.params.comd.dx * ratio(napkin.params.comd.rejected,
+        napkin.params.comd.accepted),
+      napkin.L);
+}
+
+static void move_comd(size_t const ipoly) {
+  napkin.accept = move_accept_comd;
+  napkin.reject = move_reject_comd;
+  napkin.adjust = move_adjust_comd;
+
+  napkin.history.comd.ipoly = ipoly;
+  napkin.history.comd.R = napkin.R[ipoly];
 
   for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const x = napkin.dx * gsl_ran_flat(napkin.rng, -1, 1);
+    double const x = napkin.params.comd.dx * gsl_ran_flat(napkin.rng, -1, 1);
 
     for (size_t ibead = 0; ibead < NBEAD; ++ibead)
       napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
@@ -315,39 +371,16 @@ static void move_displace(size_t const ipoly) {
   }
 }
 
-static void unmove_bisect(size_t const ipoly, size_t const ibead) {
+static void move_accept_bisect(void) {
+  err_abort(NULL);
+}
+
+static void move_reject_bisect(void) {
   err_abort(NULL);
 }
 
 static void move_bisect(size_t const ipoly, size_t const ibead) {
   err_abort(NULL);
-
-  for (size_t idim = 0; idim < NDIM; ++idim) {
-    napkin.R[ipoly].r[ibead].d[idim] =
-      gsl_ran_gaussian(napkin.rng, sqrt(napkin.lambda * napkin.tau)) +
-      fp_midpoint(napkin.R[ipoly].r[size_wrap(ibead - 1, NBEAD)].d[idim],
-          napkin.R[ipoly].r[size_wrap(ibead + 1, NBEAD)].d[idim]);
-  }
-}
-
-// Adjustments (adjust) -------------------------------------------------------
-
-static double ratio(void) {
-  return (double) (napkin.accepted + NSTAB) /
-    (double) (napkin.rejected + NSTAB);
-}
-
-static size_t total(void) {
-  return napkin.accepted + napkin.rejected;
-}
-
-static void adjust_yes(void) {
-  napkin.dx = fp_wrap(napkin.dx * ratio(), napkin.L);
-}
-
-static void adjust_maybe(void) {
-  if (total() % NSTAB == 0)
-    adjust_yes();
 }
 
 // Constants () ---------------------------------------------------------------
@@ -358,19 +391,6 @@ static double const epsilon = 1; // L--J 6--12 P
 static double const sigma = 1; // L--J 6--12 P
 static double const omega = 1; // HP
 
-// Estimators (est) -----------------------------------------------------------
-
-static double est_K(void) {
-  double N = NAN, Rip1 = NAN, Ri = NAN; // ??
-  double const cs = 2 * napkin.lambda * napkin.tau;
-  return (NDIM * N * log(M_2PI * cs) + gsl_pow_2(Rip1 - Ri) / cs) / 2;
-}
-
-static double est_V(void) {
-  double VRip1 = NAN, VRi = NAN; // ??
-  return napkin.tau * (VRi + VRip1) / 2;
-}
-
 // System-Specific Quantities () ----------------------------------------------
 
 static double Kbead(size_t const ipoly, size_t const ibead) {
@@ -379,7 +399,7 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
   for (int i = 0; i < 2; ++i) {
     bool const p = ibead == 0 && i == 0;
     bool const q = ibead == NBEAD - 1 && i == 1;
-    double (* const f)(double) = p || q ? napkin.K2cl : napkin.K2;
+    double (* const f)(double) = p || q ? napkin.K2end : napkin.K2;
     size_t const jbead = size_wrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
     size_t const jpoly = p ? napkin.R[ipoly].from :
       q ? napkin.R[ipoly].to :
@@ -415,7 +435,7 @@ static double Vbeads(size_t const ibead) {
   double V = 0;
 
   bool const p = ibead == 0 || ibead == NBEAD - 1;
-  double (* const f)(double) = p ? napkin.V2cl : napkin.V2;
+  double (* const f)(double) = p ? napkin.V2end : napkin.V2;
 
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
@@ -438,90 +458,102 @@ static double Stotal(void) {
   return Vtotal() + Ktotal();
 }
 
-// Work Horses () -------------------------------------------------------------
+// Estimators (est) -----------------------------------------------------------
 
-typedef double (* worker)(void);
+static double est_tdE(void) {
+  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau);
+  double const V = Vtotal() * napkin.tau;
 
-static double work_trial(void) {
-  size_t const ipoly = (size_t) gsl_rng_uniform_int(napkin.rng, NPOLY);
-  size_t const ibead = (size_t) gsl_rng_uniform_int(napkin.rng, NBEAD);
+  if (napkin.tdE.N == 0)
+    return 0; // What is this heresy?
+
+  return ((double) NDIM / 2 - K - V) / (napkin.tdE.N * napkin.tau);
+}
+
+static void est_gather_tdE(void) {
+   double const E = est_tdE();
+   ++napkin.tdE.N;
+   double const Delta = E - napkin.tdE.mean;
+   napkin.tdE.mean += Delta / (double) napkin.tdE.N;
+   napkin.tdE.M2 += Delta * (E - napkin.tdE.mean);
+
+   napkin.tdE.var = napkin.tdE.M2 / (double) (napkin.tdE.N - 1);
+   napkin.tdE.stderr = sqrt(napkin.tdE.var / (double) napkin.tdE.N);
+}
+
+static double est_K(void) {
+  double N = NAN, Rip1 = NAN, Ri = NAN; // ??
+  double const cs = 2 * napkin.lambda * napkin.tau;
+  return (NDIM * N * log(M_2PI * cs) + gsl_pow_2(Rip1 - Ri) / cs) / 2;
+}
+
+static double est_V(void) {
+  double VRip1 = NAN, VRi = NAN; // ??
+  return napkin.tau * (VRi + VRip1) / 2;
+}
+
+// Workers (work) -------------------------------------------------------------
+
+static double work_ss(void) {
+  size_t const ipoly = ran_index(napkin.rng, NPOLY);
+  size_t const ibead = ran_index(napkin.rng, NBEAD);
 
   // Local `Vbeads`, because the rest stays the same.
-  double const T0 = Vbeads(ibead);
+  double const V0 = Vbeads(ibead);
   double const K0 = Kbead(ipoly, ibead);
 
-  move_trial(ipoly, ibead);
+  move_ss(ipoly, ibead);
 
-  double const T1 = Vbeads(ibead);
+  double const V1 = Vbeads(ibead);
   double const K1 = Kbead(ipoly, ibead);
 
-  double const DeltaS_T = napkin.tau * (T1 - T0);
-  double const DeltaS_K = (1 / (4 * napkin.lambda * napkin.tau)) * (K1 - K0);
+  double const DeltaS_V = (V1 - V0) * napkin.tau;
+  double const DeltaS_K = (K1 - K0) / (4 * napkin.lambda * napkin.tau);
 
-  return DeltaS_T + DeltaS_K;
+  return DeltaS_V + DeltaS_K;
 }
 
-static double work_displace(void) {
-  size_t const ipoly = (size_t) gsl_rng_uniform_int(napkin.rng, NPOLY);
+static double work_comd(void) {
+  size_t const ipoly = ran_index(napkin.rng, NPOLY);
 
   // Global `Vtotal`, because `K` is unchanged (maybe not for permutations).
-  double const T0 = Vtotal();
+  double const V0 = Vtotal();
 
-  move_displace(ipoly);
+  move_comd(ipoly);
 
-  double const T1 = Vtotal();
+  double const V1 = Vtotal();
 
-  double const DeltaS_T = napkin.tau * (T1 - T0);
+  double const DeltaS_V = (V1 - V0) * napkin.tau;
 
-  return DeltaS_T;
+  return DeltaS_V;
 }
 
-static void choice(double const DeltaS) {
+// Work Horses () -------------------------------------------------------------
+
+static void choose(double const DeltaS) {
   if (DeltaS <= 0)
-    ++napkin.accepted;
+    napkin.accept();
   else {
     double const q = gsl_ran_flat(napkin.rng, 0, 1);
-
     if (q <= exp(-DeltaS))
-      ++napkin.accepted;
-    else {
-      napkin.undo();
-
-      ++napkin.rejected;
-    }
+      napkin.accept();
+    else
+      napkin.reject();
   }
 }
 
+// Other Crap () --------------------------------------------------------------
+
 static void status_line(void) {
-  printf("z = (%zu + %zu) / (%zu + %zu) = %zu %%\ndx = %f\n",
-      napkin.accepted, napkin.rejected, NTSTEP, NPSTEP,
-      100 * (napkin.accepted + napkin.rejected) / (NTSTEP + NPSTEP),
-      napkin.dx);
+  printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
+      "E = %f +- %f\n",
+      napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
+      100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
+      napkin.tdE.mean, napkin.tdE.stderr);
 }
 
 static void status_file(void) {
   save_esl();
-}
-
-static void work(void) {
-  worker const workers[] = {work_trial, work_displace};
-
-  size_t const iworker = (size_t) gsl_rng_uniform_int(napkin.rng,
-      sizeof workers / sizeof *workers);
-  choice(workers[iworker]());
-
-  adjust_maybe();
-
-  int signum;
-  if (sigs_use(&signum))
-    switch (signum) {
-      case SIGUSR1:
-        status_line();
-        break;
-      case SIGUSR2:
-        status_file();
-        break;
-    }
 }
 
 static double lj612(double const r) {
@@ -544,6 +576,9 @@ static double harm2(double const r2) {
   return m * gsl_pow_2(omega) * r2 / 2;
 }
 
+static double (* const workers[])(void) = {work_ss, work_comd};
+#define NWORKERS (sizeof workers / sizeof *workers)
+
 static void not_main(void) {
   err_reset();
 
@@ -551,22 +586,35 @@ static void not_main(void) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  napkin.accepted = 0;
-  napkin.rejected = 0;
-  napkin.dx = 1;
+  napkin.accept = nop;
+  napkin.reject = nop;
+  napkin.adjust = nop;
+
+  napkin.params.ss.accepted = 0;
+  napkin.params.ss.rejected = 0;
+  napkin.params.ss.dx = 1;
+  napkin.params.comd.accepted = 0;
+  napkin.params.comd.rejected = 0;
+  napkin.params.comd.dx = 1;
+
   napkin.L = 5;
   napkin.beta = 1;
   napkin.lambda = gsl_pow_2(hbar) / (2 * m);
   napkin.tau = napkin.beta / NBEAD;
+
   napkin.V2 = lj6122;
-  napkin.V2cl = fp_zero;
+  napkin.V2end = fp_zero;
   napkin.K2 = fp_identity;
-  napkin.K2cl = fp_identity;
+  napkin.K2end = fp_identity;
+
+  napkin.tdE.N = 0;
+  napkin.tdE.mean = 0;
+  napkin.tdE.M2 = 0;
+  napkin.tdE.var = NAN; // This should go elsewhere.
+  napkin.tdE.stderr = NAN; // This should go elsewhere.
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
-
-  napkin.undo = unmove_null;
 
   conf_circlatt();
   force_close();
@@ -579,29 +627,44 @@ static void not_main(void) {
   disp_drift(driftfp);
   fflush(driftfp);
 
-  for (size_t istep = 0, itstep = 0, ipstep = 0, irstep = 0;
-      istep < NTSTEP + NPSTEP;
-      ++istep) {
-    work();
+  napkin.itstep = 0;
+  napkin.ipstep = 0;
+  napkin.irstep = 0;
+  for (size_t istep = 0; istep < NTSTEP + NPSTEP; ++istep) {
 
-    if (istep < NTSTEP)
-      ++itstep;
-    else {
-      // Update napkin with estimators
+    choose(workers[ran_index(napkin.rng, NWORKERS)]());
 
-      if (NRSTEP * ipstep > NPSTEP * irstep) {
-        // Save results into files
-        disp_drift(driftfp);
+    napkin.adjust();
 
-        ++irstep;
+    int signum;
+    if (sigs_use(&signum))
+      switch (signum) {
+        case SIGUSR1:
+          status_line();
+          break;
+        case SIGUSR2:
+          status_file();
+          break;
       }
 
-      ++ipstep;
+    if (istep < NTSTEP)
+      ++napkin.itstep;
+    else {
+      est_gather_tdE();
+
+      if (NRSTEP * napkin.ipstep > NPSTEP * napkin.irstep) {
+        disp_drift(driftfp);
+
+        ++napkin.irstep;
+      }
+
+      ++napkin.ipstep;
     }
   }
 
   fclose(driftfp);
 
+  status_line();
   status_file();
 
   gsl_rng_free(napkin.rng);
