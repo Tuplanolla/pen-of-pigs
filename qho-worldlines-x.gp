@@ -3,7 +3,7 @@
 set xlabel '$x$'
 set ylabel '$\tau$'
 unset key
-L = 5
+L = `cat 'qho-length.data'`
 p(q) = q > L / 2 ? q - L : q < -L / 2 ? q + L : q
 fx(i, x, y) = i == 0 ? \
   (x2 = NaN, y2 = NaN, x1 = x, y1 = y, x2) : \

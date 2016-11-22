@@ -553,6 +553,16 @@ static void disp_drift(FILE* const fp) {
 
 // Saving into Data Files (save)
 
+static void save_length(void) {
+  FILE* const fp = fopen("qho-length.data", "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  fprintf(fp, "%f\n", napkin.L);
+
+  fclose(fp);
+}
+
 static void save_esl(void) {
   FILE* const fp = fopen("qho-ensemble.data", "w");
   if (fp == NULL)
@@ -635,6 +645,8 @@ static void not_main(void) {
 
   conf_circlatt();
   force_close();
+
+  save_length();
 
   FILE* const driftfp = fopen("qho-drift.data", "w");
   if (driftfp == NULL)
