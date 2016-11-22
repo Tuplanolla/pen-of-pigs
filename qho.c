@@ -19,9 +19,10 @@
 #define NDIM ((size_t) 2)
 #define NPOLY ((size_t) 4)
 #define NBEAD ((size_t) 8)
-#define NTSTEP ((size_t) 1 << 4)
-#define NPSTEP ((size_t) 1 << 8)
-#define NRSTEP ((size_t) 1 << 8)
+#define NTSTEP ((size_t) 1 << 12)
+#define NPSTEP ((size_t) 1 << 16)
+#define NTRSTEP ((size_t) 1 << 4)
+#define NPRSTEP ((size_t) 1 << 8)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -29,7 +30,8 @@ never wraps around, which makes their manipulation easier.
 */
 static_assert(NTSTEP <= SQRT_SIZE_MAX, "too many thermalization steps");
 static_assert(NPSTEP <= SQRT_SIZE_MAX, "too many production steps");
-static_assert(NRSTEP <= NPSTEP, "too many recording steps");
+static_assert(NTRSTEP <= NTSTEP, "too many thermalization recording steps");
+static_assert(NPRSTEP <= NPSTEP, "too many production recording steps");
 
 // Types () -------------------------------------------------------------------
 
@@ -73,7 +75,8 @@ struct napkin {
   void (* adjust)(void);
   size_t itstep; // Thermalization steps taken.
   size_t ipstep; // Production steps taken.
-  size_t irstep; // Recording steps taken.
+  size_t itrstep; // Recording steps taken.
+  size_t iprstep; // Recording steps taken.
   double L; // Lattice constant.
   double beta;
   double lambda;
@@ -88,7 +91,7 @@ struct napkin {
     double M2; // Second moment.
     double var; // Variance.
     double stderr; // Standard error of the mean.
-  } tdE; // Thermodynamic estimator.
+  } tde; // Thermodynamic estimator.
   struct poly R[NPOLY];
 };
 
@@ -242,57 +245,6 @@ static void conf_circlatt(void) {
         m = z.quot;
       }
     }
-}
-
-// Printing into Data Files (disp) --------------------------------------------
-
-/*
-Print bead into stream `fp`.
-*/
-static void disp_bead(FILE* const fp,
-    size_t const iindex, size_t const ipoly, size_t const ibead) {
-  fprintf(fp, "%zu", iindex);
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    fprintf(fp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
-
-  fprintf(fp, "\n");
-}
-
-/*
-Print polymer into stream `fp`.
-*/
-static void disp_poly(FILE* const fp) {
-  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      disp_bead(fp, ibead, ipoly, ibead);
-
-    if (napkin.R[ipoly].to != SIZE_MAX)
-      disp_bead(fp, NBEAD, napkin.R[ipoly].to, 0);
-
-    fprintf(fp, "\n");
-  }
-}
-
-/*
-Print parameters into stream `fp`.
-*/
-static void disp_drift(FILE* const fp) {
-  fprintf(fp, "%zu %f %f\n",
-      napkin.itstep + napkin.ipstep,
-      napkin.params.ss.dx, napkin.params.comd.dx);
-}
-
-// Saving into Data Files (save)
-
-static void save_esl(void) {
-  FILE* const fp = fopen("qho-ensemble.data", "w");
-  if (fp == NULL)
-    err_abort(fopen);
-
-  disp_poly(fp);
-
-  fclose(fp);
 }
 
 // Physical Moves (move) ------------------------------------------------------
@@ -471,25 +423,25 @@ static double Stotal(void) {
 
 // Estimators (est) -----------------------------------------------------------
 
-static double est_tdE(void) {
+static double est_tde(void) {
   double const K = Ktotal() / (4 * napkin.lambda * napkin.tau);
   double const V = Vtotal() * napkin.tau;
 
-  if (napkin.tdE.N == 0)
+  if (napkin.tde.N == 0)
     return 0; // What is this heresy?
 
-  return ((double) NDIM / 2 - K - V) / (napkin.tdE.N * napkin.tau);
+  return ((double) NDIM / 2 - K - V) / (napkin.tde.N * napkin.tau);
 }
 
-static void est_gather_tdE(void) {
-   double const E = est_tdE();
-   ++napkin.tdE.N;
-   double const Delta = E - napkin.tdE.mean;
-   napkin.tdE.mean += Delta / (double) napkin.tdE.N;
-   napkin.tdE.M2 += Delta * (E - napkin.tdE.mean);
+static void est_gather_tde(void) {
+   double const E = est_tde();
+   ++napkin.tde.N;
+   double const Delta = E - napkin.tde.mean;
+   napkin.tde.mean += Delta / (double) napkin.tde.N;
+   napkin.tde.M2 += Delta * (E - napkin.tde.mean);
 
-   napkin.tdE.var = napkin.tdE.M2 / (double) (napkin.tdE.N - 1);
-   napkin.tdE.stderr = sqrt(napkin.tdE.var / (double) napkin.tdE.N);
+   napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
+   napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
 }
 
 static double est_K(void) {
@@ -555,6 +507,62 @@ static void choose(double const DeltaS) {
   napkin.adjust();
 }
 
+// Printing into Data Files (disp) --------------------------------------------
+
+/*
+Print bead into stream `fp`.
+*/
+static void disp_bead(FILE* const fp,
+    size_t const iindex, size_t const ipoly, size_t const ibead) {
+  fprintf(fp, "%zu", iindex);
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    fprintf(fp, " %f", napkin.R[ipoly].r[ibead].d[idim]);
+
+  fprintf(fp, "\n");
+}
+
+/*
+Print polymer into stream `fp`.
+*/
+static void disp_poly(FILE* const fp) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      disp_bead(fp, ibead, ipoly, ibead);
+
+    if (napkin.R[ipoly].to != SIZE_MAX)
+      disp_bead(fp, NBEAD, napkin.R[ipoly].to, 0);
+
+    fprintf(fp, "\n");
+  }
+}
+
+static void disp_tde(FILE* const fp) {
+  fprintf(fp, "%zu %f %f %f\n",
+      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.var);
+}
+
+/*
+Print parameters into stream `fp`.
+*/
+static void disp_drift(FILE* const fp) {
+  fprintf(fp, "%zu %f %f\n",
+      napkin.itstep + napkin.ipstep,
+      napkin.params.ss.dx, napkin.params.comd.dx);
+}
+
+// Saving into Data Files (save)
+
+static void save_esl(void) {
+  FILE* const fp = fopen("qho-ensemble.data", "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  disp_poly(fp);
+
+  fclose(fp);
+}
+
 // Other Crap () --------------------------------------------------------------
 
 static void status_line(void) {
@@ -562,7 +570,7 @@ static void status_line(void) {
       "E = %f +- %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tdE.mean, napkin.tdE.stderr);
+      napkin.tde.mean, napkin.tde.stderr);
 }
 
 static void status_file(void) {
@@ -616,11 +624,11 @@ static void not_main(void) {
   napkin.K2 = fp_identity;
   napkin.K2end = fp_identity;
 
-  napkin.tdE.N = 0;
-  napkin.tdE.mean = 0;
-  napkin.tdE.M2 = 0;
-  napkin.tdE.var = NAN; // This should go elsewhere.
-  napkin.tdE.stderr = NAN; // This should go elsewhere.
+  napkin.tde.N = 0;
+  napkin.tde.mean = 0;
+  napkin.tde.M2 = 0;
+  napkin.tde.var = NAN; // This should go elsewhere.
+  napkin.tde.stderr = NAN; // This should go elsewhere.
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -632,13 +640,18 @@ static void not_main(void) {
   if (driftfp == NULL)
     err_abort(fopen);
 
+  FILE* const tdefp = fopen("qho-tde.data", "w");
+  if (tdefp == NULL)
+    err_abort(fopen);
+
   // Just to prevent empty data files...
   disp_drift(driftfp);
   fflush(driftfp);
 
   napkin.itstep = 0;
   napkin.ipstep = 0;
-  napkin.irstep = 0;
+  napkin.itrstep = 0;
+  napkin.iprstep = 0;
   for (size_t istep = 0; istep < NTSTEP + NPSTEP; ++istep) {
 
     choose(workers[ran_index(napkin.rng, NWORKERS)]());
@@ -654,20 +667,29 @@ static void not_main(void) {
           break;
       }
 
-    if (istep < NTSTEP)
-      ++napkin.itstep;
-    else {
-      est_gather_tdE();
-
-      if (NRSTEP * napkin.ipstep > NPSTEP * napkin.irstep) {
+    if (istep < NTSTEP) {
+      if (NPRSTEP * napkin.itstep > NPSTEP * napkin.itrstep) {
         disp_drift(driftfp);
 
-        ++napkin.irstep;
+        ++napkin.itrstep;
+      }
+
+      ++napkin.itstep;
+    } else {
+      est_gather_tde();
+
+      if (NPRSTEP * napkin.ipstep > NPSTEP * napkin.iprstep) {
+        disp_drift(driftfp);
+        disp_tde(tdefp);
+
+        ++napkin.iprstep;
       }
 
       ++napkin.ipstep;
     }
   }
+
+  fclose(tdefp);
 
   fclose(driftfp);
 
