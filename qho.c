@@ -81,6 +81,7 @@ struct napkin {
   double beta;
   double lambda;
   double tau;
+  double (* V2ext)(double); // External potential.
   double (* V2)(double); // Potential energy.
   double (* K2)(double); // Kinetic energy.
   double (* V2end)(double); // Potential energy at open ends.
@@ -385,6 +386,8 @@ static double Kpoly(size_t const ipoly) {
   return K;
 }
 
+// The log(2 * M_2PI * lambda * tau) term is not here
+// due to scaling and offsets.
 static double Ktotal(void) {
   double K = 0;
 
@@ -392,6 +395,10 @@ static double Ktotal(void) {
     K += Kpoly(ipoly);
 
   return K;
+}
+
+static double Vextbead(size_t const ipoly, size_t const ibead) {
+  return napkin.V2ext(bead_norm2(napkin.R[ipoly].r[ibead]));
 }
 
 static double Vbeads(size_t const ibead) {
@@ -411,8 +418,12 @@ static double Vbeads(size_t const ibead) {
 static double Vtotal(void) {
   double V = 0;
 
-  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
     V += Vbeads(ibead);
+
+    for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+      V += Vextbead(ipoly, ibead);
+  }
 
   return V;
 }
@@ -424,7 +435,8 @@ static double Stotal(void) {
 // Estimators (est) -----------------------------------------------------------
 
 static double est_tde(void) {
-  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau);
+  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau) -
+    NDIM * log(2 * M_2PI * napkin.lambda * napkin.tau) / 2;
   double const V = Vtotal() * napkin.tau;
 
   if (napkin.tde.N == 0)
@@ -462,12 +474,12 @@ static double work_ss(void) {
   size_t const ibead = ran_index(napkin.rng, NBEAD);
 
   // Local `Vbeads`, because the rest stays the same.
-  double const V0 = Vbeads(ibead);
+  double const V0 = Vbeads(ibead) + Vextbead(ipoly, ibead);
   double const K0 = Kbead(ipoly, ibead);
 
   move_ss(ipoly, ibead);
 
-  double const V1 = Vbeads(ibead);
+  double const V1 = Vbeads(ibead) + Vextbead(ipoly, ibead);
   double const K1 = Kbead(ipoly, ibead);
 
   double const DeltaS_V = (V1 - V0) * napkin.tau;
@@ -629,6 +641,7 @@ static void not_main(void) {
   napkin.lambda = gsl_pow_2(hbar) / (2 * m);
   napkin.tau = napkin.beta / NBEAD;
 
+  napkin.V2ext = fp_zero;
   napkin.V2 = lj6122;
   napkin.V2end = fp_zero;
   napkin.K2 = fp_identity;
@@ -711,7 +724,10 @@ static void not_main(void) {
   gsl_rng_free(napkin.rng);
 }
 
-// abstract mean/var, fix V/K scaling, find home for lost souls
+// TODO Add external potential.
+// TODO Abstract mean/var.
+// TODO Fix V/K scaling and offsets.
+// TODO Find home for lost souls.
 
 int main(void) {
   not_main();
