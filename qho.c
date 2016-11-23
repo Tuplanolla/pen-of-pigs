@@ -47,6 +47,7 @@ struct poly {
 
 struct napkin {
   gsl_rng* rng; // State of the random number generator.
+  struct bead origin;
   struct {
     struct {
       size_t accepted;
@@ -399,8 +400,8 @@ static double Ktotal(void) {
 }
 
 static double Vextbead(size_t const ipoly, size_t const ibead) {
-  return napkin.V2ext(fp_periodic(bead_norm2(napkin.R[ipoly].r[ibead]),
-        napkin.L));
+  return napkin.V2ext(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
+          napkin.origin)));
 }
 
 static double Vbeads(size_t const ibead) {
@@ -652,6 +653,9 @@ static void not_main(void) {
   napkin.beta = 1 / (k * T);
   napkin.lambda = 1; // gsl_pow_2(hbar) / (2 * m)
   napkin.tau = napkin.beta / NBEAD;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    napkin.origin.d[idim] = 0;
 
   double const q = hbar * omega / 2;
   double const E = q / tanh(q * napkin.beta);
