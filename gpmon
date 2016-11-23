@@ -1,0 +1,12 @@
+#! /bin/sh
+
+# set terminal wxt noraise
+# ...
+# pause 10
+# reread
+
+ps="$(ps= && for x in *.gp ; \
+do gnuplot "$x" 2> /dev/null & ps="$ps $!" ; \
+done && echo "$ps")"
+
+# alias ungp="kill $ps 2> /dev/null"

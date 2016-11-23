@@ -447,6 +447,17 @@ static double est_tde(void) {
   return (KC - K + V) / ((double) NBEAD * napkin.tau);
 }
 
+static void est_gather_tde(void) {
+   double const E = est_tde();
+   ++napkin.tde.N;
+   double const Delta = E - napkin.tde.mean;
+   napkin.tde.mean += Delta / (double) napkin.tde.N;
+   napkin.tde.M2 += Delta * (E - napkin.tde.mean);
+
+   napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
+   napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
+}
+
 // Bad.
 struct {
   size_t N; // Samples.
@@ -461,20 +472,8 @@ static void est_gather_x(void) {
    double const Delta = E - urgh.mean;
    urgh.mean += Delta / (double) urgh.N;
    urgh.M2 += Delta * (E - urgh.mean);
-
    urgh.var = urgh.M2 / (double) (urgh.N - 1);
    urgh.stderr = sqrt(urgh.var / (double) urgh.N);
-}
-
-static void est_gather_tde(void) {
-   double const E = est_tde();
-   ++napkin.tde.N;
-   double const Delta = E - napkin.tde.mean;
-   napkin.tde.mean += Delta / (double) napkin.tde.N;
-   napkin.tde.M2 += Delta * (E - napkin.tde.mean);
-
-   napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
-   napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
 }
 
 // Workers (work) -------------------------------------------------------------

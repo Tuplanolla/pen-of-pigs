@@ -1,5 +1,6 @@
 # set terminal epslatex
 # set output 'epslatex.tex'
+set terminal wxt noraise
 set xlabel '$x$'
 set ylabel '$\tau$'
 unset key
@@ -17,3 +18,5 @@ plot for [dx = -L : L : L] \
   (fx($1, $2 + dx, $1)) : (fy($1, $2 + dx, $1)) : \
   (dfx($1, $2 + dx, $1)) : (dfy($1, $2 + dx, $1)) \
   with vectors linetype 1
+pause 10
+reread
