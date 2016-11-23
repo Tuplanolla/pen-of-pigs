@@ -16,11 +16,11 @@
 
 // Static Constants (N) -------------------------------------------------------
 
-#define NDIM ((size_t) 2)
-#define NPOLY ((size_t) 4)
-#define NBEAD ((size_t) 8)
-#define NTSTEP ((size_t) 1 << 12)
-#define NPSTEP ((size_t) 1 << 16)
+#define NDIM ((size_t) 1)
+#define NPOLY ((size_t) 1)
+#define NBEAD ((size_t) 50)
+#define NTSTEP ((size_t) 1 << 14)
+#define NPSTEP ((size_t) 1 << 18)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 
@@ -351,6 +351,7 @@ static void move_bisect(size_t const ipoly, size_t const ibead) {
 
 static double const hbar = 1;
 static double const m = 1;
+static double const k = 1;
 static double const epsilon = 1; // L--J 6--12 P
 static double const sigma = 1; // L--J 6--12 P
 static double const omega = 1; // HP
@@ -383,11 +384,11 @@ static double Kpoly(size_t const ipoly) {
   for (size_t ibead = 0; ibead < NBEAD; ++ibead)
     K += Kbead(ipoly, ibead);
 
-  return K;
+  return K / 2;
 }
 
 // The log(2 * M_2PI * lambda * tau) term is not here
-// due to scaling and offsets.
+// due to scaling and offsets?
 static double Ktotal(void) {
   double K = 0;
 
@@ -398,7 +399,8 @@ static double Ktotal(void) {
 }
 
 static double Vextbead(size_t const ipoly, size_t const ibead) {
-  return napkin.V2ext(bead_norm2(napkin.R[ipoly].r[ibead]));
+  return napkin.V2ext(fp_periodic(bead_norm2(napkin.R[ipoly].r[ibead]),
+        napkin.L));
 }
 
 static double Vbeads(size_t const ibead) {
@@ -434,15 +436,33 @@ static double Stotal(void) {
 
 // Estimators (est) -----------------------------------------------------------
 
+// \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
+// \langle \frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\rangle
 static double est_tde(void) {
-  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau) -
-    NDIM * log(2 * M_2PI * napkin.lambda * napkin.tau) / 2;
+  double const KC = (double) (NDIM * NPOLY) / 2; // * log(2 * M_2PI * napkin.lambda * napkin.tau);
+  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau);
   double const V = Vtotal() * napkin.tau;
 
-  if (napkin.tde.N == 0)
-    return 0; // What is this heresy?
+  return (KC - K + V) / ((double) NBEAD * napkin.tau);
+}
 
-  return ((double) NDIM / 2 - K - V) / (napkin.tde.N * napkin.tau);
+// Bad.
+struct {
+  size_t N; // Samples.
+  double mean; // Mean.
+  double M2; // Second moment.
+  double var; // Variance.
+  double stderr; // Standard error of the mean.
+} urgh; // Worldline histogram.
+static void est_gather_x(void) {
+   double const E = fp_periodic(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
+   ++urgh.N;
+   double const Delta = E - urgh.mean;
+   urgh.mean += Delta / (double) urgh.N;
+   urgh.M2 += Delta * (E - urgh.mean);
+
+   urgh.var = urgh.M2 / (double) (urgh.N - 1);
+   urgh.stderr = sqrt(urgh.var / (double) urgh.N);
 }
 
 static void est_gather_tde(void) {
@@ -454,17 +474,6 @@ static void est_gather_tde(void) {
 
    napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
    napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
-}
-
-static double est_K(void) {
-  double N = NAN, Rip1 = NAN, Ri = NAN; // ??
-  double const cs = 2 * napkin.lambda * napkin.tau;
-  return (NDIM * N * log(M_2PI * cs) + gsl_pow_2(Rip1 - Ri) / cs) / 2;
-}
-
-static double est_V(void) {
-  double VRip1 = NAN, VRi = NAN; // ??
-  return napkin.tau * (VRi + VRip1) / 2;
 }
 
 // Workers (work) -------------------------------------------------------------
@@ -589,10 +598,12 @@ static void save_esl(void) {
 
 static void status_line(void) {
   printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
-      "E = %f +- %f\n",
+      "E = %f +- %f\n"
+      "K + V = %f + %f = %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tde.mean, napkin.tde.stderr);
+      napkin.tde.mean, napkin.tde.stderr,
+      Ktotal(), Vtotal(), Ktotal() + Vtotal());
 }
 
 static void status_file(void) {
@@ -636,12 +647,17 @@ static void not_main(void) {
   napkin.params.comd.rejected = 0;
   napkin.params.comd.dx = 1;
 
-  napkin.L = 5;
-  napkin.beta = 1;
-  napkin.lambda = gsl_pow_2(hbar) / (2 * m);
+  napkin.L = 10;
+  double const T = 0.1;
+  napkin.beta = 1 / (k * T);
+  napkin.lambda = 1; // gsl_pow_2(hbar) / (2 * m)
   napkin.tau = napkin.beta / NBEAD;
 
-  napkin.V2ext = fp_zero;
+  double const q = hbar * omega / 2;
+  double const E = q / tanh(q * napkin.beta);
+  printf("expect: E = %f\n", E);
+
+  napkin.V2ext = harm2;
   napkin.V2 = lj6122;
   napkin.V2end = fp_zero;
   napkin.K2 = fp_identity;
@@ -656,7 +672,7 @@ static void not_main(void) {
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
 
-  conf_circlatt();
+  conf_ptlatt();
   force_close();
 
   save_length();
@@ -703,6 +719,9 @@ static void not_main(void) {
     } else {
       est_gather_tde();
 
+      // Bad.
+      est_gather_x();
+
       if (NPRSTEP * napkin.ipstep > NPSTEP * napkin.iprstep) {
         disp_drift(driftfp);
         disp_tde(tdefp);
@@ -713,6 +732,9 @@ static void not_main(void) {
       ++napkin.ipstep;
     }
   }
+
+  // Bad.
+  printf("should be zero: %f +- %f\n", urgh.mean, urgh.stderr);
 
   fclose(tdefp);
 
