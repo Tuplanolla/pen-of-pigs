@@ -18,9 +18,9 @@
 
 #define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
-#define NBEAD ((size_t) 50)
+#define NBEAD ((size_t) 64)
 #define NTSTEP ((size_t) 1 << 14)
-#define NPSTEP ((size_t) 1 << 18)
+#define NPSTEP ((size_t) 1 << 20)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 
@@ -92,6 +92,7 @@ struct napkin {
     double mean; // Mean.
     double M2; // Second moment.
     double var; // Variance.
+    double std; // Standard deviation.
     double stderr; // Standard error of the mean.
   } tde; // Thermodynamic estimator.
   struct poly R[NPOLY];
@@ -440,11 +441,10 @@ static double Stotal(void) {
 // \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
 // \langle \frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\rangle
 static double est_tde(void) {
-  double const KC = (double) (NDIM * NPOLY) / 2; // * log(2 * M_2PI * napkin.lambda * napkin.tau);
-  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau);
-  double const V = Vtotal() * napkin.tau;
-
-  return (KC - K + V) / ((double) NBEAD * napkin.tau);
+  double const KC = (double) NDIM / 2;
+  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau) / (NBEAD * NPOLY);
+  double const V = Vtotal() * napkin.tau / (NBEAD * NPOLY);
+  return (KC - K + V) / napkin.tau;
 }
 
 static void est_gather_tde(void) {
@@ -455,6 +455,7 @@ static void est_gather_tde(void) {
    napkin.tde.M2 += Delta * (E - napkin.tde.mean);
 
    napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
+   napkin.tde.std = sqrt(napkin.tde.var);
    napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
 }
 
@@ -464,6 +465,7 @@ struct {
   double mean; // Mean.
   double M2; // Second moment.
   double var; // Variance.
+  double std; // Standard deviation.
   double stderr; // Standard error of the mean.
 } urgh; // Worldline histogram.
 static void est_gather_x(void) {
@@ -473,6 +475,7 @@ static void est_gather_x(void) {
    urgh.mean += Delta / (double) urgh.N;
    urgh.M2 += Delta * (E - urgh.mean);
    urgh.var = urgh.M2 / (double) (urgh.N - 1);
+   urgh.std = sqrt(urgh.var);
    urgh.stderr = sqrt(urgh.var / (double) urgh.N);
 }
 
@@ -602,7 +605,7 @@ static void status_line(void) {
       "K + V = %f + %f = %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tde.mean, napkin.tde.stderr,
+      napkin.tde.mean, napkin.tde.std,
       Ktotal(), Vtotal(), Ktotal() + Vtotal());
 }
 
@@ -670,6 +673,7 @@ static void not_main(void) {
   napkin.tde.mean = 0;
   napkin.tde.M2 = 0;
   napkin.tde.var = NAN; // This should go elsewhere.
+  napkin.tde.std = NAN; // This should go elsewhere.
   napkin.tde.stderr = NAN; // This should go elsewhere.
 
   gsl_rng_env_setup();
@@ -737,7 +741,7 @@ static void not_main(void) {
   }
 
   // Bad.
-  printf("should be zero: %f +- %f\n", urgh.mean, urgh.stderr);
+  printf("should be zero: %f +- %f\n", urgh.mean, urgh.std);
 
   fclose(tdefp);
 
@@ -749,7 +753,7 @@ static void not_main(void) {
   gsl_rng_free(napkin.rng);
 }
 
-// TODO Add external potential.
+// TODO Make potentials nonisotropic.
 // TODO Abstract mean/var.
 // TODO Fix V/K scaling and offsets.
 // TODO Find home for lost souls.
