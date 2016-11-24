@@ -1,18 +1,37 @@
 #! /bin/sh
 
+s='EXIT HUP INT QUIT PIPE TERM' && \
 d=$(mktemp -d) && \
-trap "rm -fr \"$d\"" EXIT && \
-ps="$(ps= && \
+trap 'trap - $s && rm -fr "$d" && kill -- "-$$"' $s && \
+t=3 && \
+trap wait CONT && \
 for x in *.gp
 do
-  y="$d/$(basename "$x")" && \
-  { echo 'set terminal wxt noraise' && \
-    cat "$x" && \
-    echo 'pause 2' && \
-    echo 'reread'
-  } > "$y" && \
-  gnuplot "$y" 2> /dev/null & ps="$ps $!"
+  ( y="$d/$(basename "$x")" && \
+    touch "$y" && \
+    t0=0 && \
+    p=0 && \
+    while true
+    do
+      t1="$(stat -c '%Z' "$x")" && \
+      if test "$t1" != "$t0"
+      then
+        { echo 'set terminal wxt noraise' && \
+          cat "$x" && \
+          echo "pause $t" && \
+          echo reread
+        } > "$y" && \
+        if test "$p" != 0
+        then kill -- "$p"
+        fi && \
+        gnuplot -p "$y" 2> /dev/null & \
+        p="$!"
+      fi && \
+      sleep "$t" && \
+      t0="$t1" || exit 1
+    done
+  ) &
 done && \
-echo "$ps")"
+wait
 
-# alias ungp="kill $ps 2> /dev/null"
+# alias ungpmon="kill $ps 2> /dev/null"

@@ -19,8 +19,8 @@
 #define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 64)
-#define NTSTEP ((size_t) 1 << 14)
-#define NPSTEP ((size_t) 1 << 20)
+#define NTSTEP ((size_t) 1 << 18)
+#define NPSTEP ((size_t) 1 << 22)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 
@@ -653,7 +653,7 @@ static void not_main(void) {
   napkin.L = 10;
   double const T = 0.1;
   napkin.beta = 1 / (k * T);
-  napkin.lambda = 1; // gsl_pow_2(hbar) / (2 * m)
+  napkin.lambda = gsl_pow_2(hbar) / (2 * m);
   napkin.tau = napkin.beta / NBEAD;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
@@ -679,7 +679,7 @@ static void not_main(void) {
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
 
-  conf_ptlatt();
+  conf_circlatt();
   force_close();
 
   save_length();
