@@ -1,12 +1,18 @@
 #! /bin/sh
 
-# set terminal wxt noraise
-# ...
-# pause 10
-# reread
-
-ps="$(ps= && for x in *.gp ; \
-do gnuplot "$x" 2> /dev/null & ps="$ps $!" ; \
-done && echo "$ps")"
+d=$(mktemp -d) && \
+trap "rm -fr \"$d\"" EXIT && \
+ps="$(ps= && \
+for x in *.gp
+do
+  y="$d/$(basename "$x")" && \
+  { echo 'set terminal wxt noraise' && \
+    cat "$x" && \
+    echo 'pause 2' && \
+    echo 'reread'
+  } > "$y" && \
+  gnuplot "$y" 2> /dev/null & ps="$ps $!"
+done && \
+echo "$ps")"
 
 # alias ungp="kill $ps 2> /dev/null"

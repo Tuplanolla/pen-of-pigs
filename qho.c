@@ -672,9 +672,9 @@ static void not_main(void) {
   napkin.tde.N = 0;
   napkin.tde.mean = 0;
   napkin.tde.M2 = 0;
-  napkin.tde.var = NAN; // This should go elsewhere.
-  napkin.tde.std = NAN; // This should go elsewhere.
-  napkin.tde.stderr = NAN; // This should go elsewhere.
+  napkin.tde.var = 0; // This should go elsewhere.
+  napkin.tde.std = 0; // This should go elsewhere.
+  napkin.tde.stderr = 0; // This should go elsewhere.
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -695,6 +695,8 @@ static void not_main(void) {
   // Just to prevent empty data files...
   disp_drift(driftfp);
   fflush(driftfp);
+  disp_tde(tdefp);
+  fflush(tdefp);
 
   napkin.itstep = 0;
   napkin.ipstep = 0;

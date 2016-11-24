@@ -1,6 +1,5 @@
 # set terminal epslatex
 # set output 'epslatex.tex'
-set terminal wxt noraise
 set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$z$'
@@ -37,5 +36,3 @@ splot for [dx = -L : L : L] for [dy = -L : L : L] for [dz = -L : L : L] \
   (dfy($1, $2 + dx, $3 + dy, $4 + dz)) : \
   (dfz($1, $2 + dx, $3 + dy, $4 + dz)) \
   with vectors linetype 1
-pause 10
-reread
