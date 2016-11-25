@@ -23,6 +23,7 @@
 #define NPSTEP ((size_t) 1 << 18)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
+#define NSUBDIV ((size_t) 16)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -82,11 +83,11 @@ struct napkin {
   double beta;
   double lambda;
   double tau;
-  double (* V2ext)(double); // External potential.
-  double (* V2)(double); // Potential energy.
-  double (* K2)(double); // Kinetic energy.
-  double (* V2end)(double); // Potential energy at open ends.
-  double (* K2end)(double); // Kinetic energy at open ends.
+  double (* Vext)(struct bead); // External potential.
+  double (* V)(struct bead); // Potential energy.
+  double (* K)(struct bead); // Kinetic energy.
+  double (* Vend)(struct bead); // Potential energy at open ends.
+  double (* Kend)(struct bead); // Kinetic energy at open ends.
   struct {
     size_t N; // Samples.
     double mean; // Mean.
@@ -110,14 +111,32 @@ static struct napkin napkin;
 
 // Vector Math (bead) ---------------------------------------------------------
 
+static struct bead bead_uwrap(struct bead const r) {
+  struct bead s;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    s.d[idim] = fp_uwrap(r.d[idim], napkin.L);
+
+  return s;
+}
+
+static struct bead bead_wrap(struct bead const r) {
+  struct bead s;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    s.d[idim] = fp_wrap(r.d[idim], napkin.L);
+
+  return s;
+}
+
 // This only takes the closest periodic image into account.
 static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = fp_wrap(r1.d[idim] - r0.d[idim], napkin.L);
+    r.d[idim] = r1.d[idim] - r0.d[idim];
 
-  return r;
+  return bead_wrap(r);
 }
 
 static double bead_norm2(struct bead const r) {
@@ -366,15 +385,14 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
   for (int i = 0; i < 2; ++i) {
     bool const p = ibead == 0 && i == 0;
     bool const q = ibead == NBEAD - 1 && i == 1;
-    double (* const f)(double) = p || q ? napkin.K2end : napkin.K2;
+    double (* const f)(struct bead) = p || q ? napkin.Kend : napkin.K;
     size_t const jbead = size_uwrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
     size_t const jpoly = p ? napkin.R[ipoly].from :
       q ? napkin.R[ipoly].to :
       ipoly;
 
     if (jpoly != SIZE_MAX)
-      K += f(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
-              napkin.R[jpoly].r[jbead])));
+      K += f(bead_sub(napkin.R[ipoly].r[ibead], napkin.R[jpoly].r[jbead]));
   }
 
   return K;
@@ -401,20 +419,18 @@ static double Ktotal(void) {
 }
 
 static double Vextbead(size_t const ipoly, size_t const ibead) {
-  return napkin.V2ext(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
-          napkin.origin)));
+  return napkin.Vext(napkin.R[ipoly].r[ibead]);
 }
 
 static double Vbeads(size_t const ibead) {
   double V = 0;
 
   bool const p = ibead == 0 || ibead == NBEAD - 1;
-  double (* const f)(double) = p ? napkin.V2end : napkin.V2;
+  double (* const f)(struct bead) = p ? napkin.Vend : napkin.V;
 
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
-      V += f(bead_norm2(bead_sub(napkin.R[ipoly].r[ibead],
-              napkin.R[jpoly].r[ibead])));
+      V += f(bead_sub(napkin.R[ipoly].r[ibead], napkin.R[jpoly].r[ibead]));
 
   return V;
 }
@@ -584,7 +600,8 @@ static void save_length(void) {
 
   fprintf(fp, "%f\n", napkin.L);
 
-  fclose(fp);
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
 }
 
 static void save_esl(void) {
@@ -594,7 +611,8 @@ static void save_esl(void) {
 
   disp_poly(fp);
 
-  fclose(fp);
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
 }
 
 // Other Crap () --------------------------------------------------------------
@@ -613,24 +631,54 @@ static void status_file(void) {
   save_esl();
 }
 
-static double lj612(double const r) {
-  double const sigmar6 = gsl_pow_6(sigma / r);
-
-  return 4 * epsilon * (gsl_pow_2(sigmar6) - sigmar6);
-}
-
-static double lj6122(double const r2) {
-  double const sigmar2 = gsl_pow_2(sigma) / r2;
+static double lj612b(struct bead const r) {
+  double const sigmar2 = gsl_pow_2(sigma) / bead_norm2(r);
 
   return 4 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
 }
 
-static double harm(double const r) {
-  return m * gsl_pow_2(omega * r) / 2;
+static double harmb(struct bead const r) {
+  return m * gsl_pow_2(omega) * bead_norm2(bead_wrap(r)) / 2;
 }
 
-static double harm2(double const r2) {
-  return m * gsl_pow_2(omega) * r2 / 2;
+static double sproink(void) {
+  FILE* const fp = fopen("qho-subdivisions.data", "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  fprintf(fp, "%zu\n", NSUBDIV);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
+static double splat(void) {
+  FILE* const fp = fopen("qho-potential.data", "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  double const v = napkin.L / NSUBDIV;
+
+  for (size_t i = 0; i < size_pow(NSUBDIV + 1, NDIM); ++i) {
+    size_t m = i;
+
+    struct bead r;
+
+    for (size_t idim = 0; idim < NDIM; ++idim) {
+      size_div_t const z = size_div(m, NSUBDIV + 1);
+
+      r.d[idim] = (double) z.rem * v;
+      m = z.quot;
+    }
+
+    for (size_t idim = 0; idim < NDIM; ++idim)
+      fprintf(fp, "%f ", r.d[idim]);
+
+    fprintf(fp, "%f\n", napkin.Vext(r));
+  }
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
 }
 
 static double (* const workers[])(void) = {work_ss, work_comd};
@@ -663,11 +711,11 @@ static void not_main(void) {
   double const E = q / tanh(q * napkin.beta);
   printf("expect: E = %f\n", E);
 
-  napkin.V2ext = harm2;
-  napkin.V2 = lj6122;
-  napkin.V2end = fp_zero;
-  napkin.K2 = fp_identity;
-  napkin.K2end = fp_identity;
+  napkin.Vext = harmb;
+  napkin.V = lj612b;
+  napkin.Vend = lj612b;
+  napkin.K = bead_norm2;
+  napkin.Kend = bead_norm2;
 
   napkin.tde.N = 0;
   napkin.tde.mean = 0;
@@ -683,6 +731,9 @@ static void not_main(void) {
   force_close();
 
   save_length();
+
+  sproink();
+  splat();
 
   FILE* const driftfp = fopen("qho-drift.data", "w");
   if (driftfp == NULL)
@@ -745,9 +796,11 @@ static void not_main(void) {
   // Bad.
   printf("should be zero: %f +- %f\n", urgh.mean, urgh.std);
 
-  fclose(tdefp);
+  if (fclose(tdefp) == EOF)
+    err_abort(fclose);
 
-  fclose(driftfp);
+  if (fclose(driftfp) == EOF)
+    err_abort(fclose);
 
   status_line();
   status_file();
@@ -755,11 +808,15 @@ static void not_main(void) {
   gsl_rng_free(napkin.rng);
 }
 
-// TODO Make potentials nonisotropic.
+// TODO Split data files by dimension (use `sprintf`).
 // TODO Abstract mean/var.
 // TODO Fix V/K scaling and offsets.
+// TODO Make periodicity conditional.
+// TODO Abstract generic calculations for qho and He-4.
 // TODO Figure out the correlation length for `stderr`.
 // TODO Find home for lost souls.
+// TODO Consider different masses for different polymers.
+// TODO Try other Marsaglia's rngs (tried {U,V}NI with no observable effect).
 
 int main(void) {
   not_main();
