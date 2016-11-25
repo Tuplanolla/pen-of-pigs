@@ -19,8 +19,8 @@
 #define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 64)
-#define NTSTEP ((size_t) 1 << 18)
-#define NPSTEP ((size_t) 1 << 22)
+#define NTSTEP ((size_t) 1 << 14)
+#define NPSTEP ((size_t) 1 << 18)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 
@@ -115,7 +115,7 @@ static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = fp_periodic(r1.d[idim] - r0.d[idim], napkin.L);
+    r.d[idim] = fp_wrap(r1.d[idim] - r0.d[idim], napkin.L);
 
   return r;
 }
@@ -252,17 +252,6 @@ static void conf_circlatt(void) {
 
 // Physical Moves (move) ------------------------------------------------------
 
-static void move_accept_ss(void) {
-  ++napkin.params.ss.accepted;
-}
-
-static void move_reject_ss(void) {
-  napkin.R[napkin.history.ss.ipoly].r[napkin.history.ss.ibead] =
-    napkin.history.ss.r;
-
-  ++napkin.params.ss.rejected;
-}
-
 /*
 r <=> a: z >=< 1
 r = 0: z = 3 / 2
@@ -281,6 +270,17 @@ static double another_surface(double const a, double const r) {
   return 1 - exp(-a) + exp(-r);
 }
 
+static void move_accept_ss(void) {
+  ++napkin.params.ss.accepted;
+}
+
+static void move_reject_ss(void) {
+  napkin.R[napkin.history.ss.ipoly].r[napkin.history.ss.ibead] =
+    napkin.history.ss.r;
+
+  ++napkin.params.ss.rejected;
+}
+
 static void move_adjust_ss(void) {
   napkin.params.ss.dx = napkin.params.ss.dx *
     surface((double) napkin.params.ss.accepted,
@@ -297,7 +297,7 @@ static void move_ss(size_t const ipoly, size_t const ibead) {
   napkin.history.ss.r = napkin.R[ipoly].r[ibead];
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
+    napkin.R[ipoly].r[ibead].d[idim] = fp_uwrap(
         napkin.R[ipoly].r[ibead].d[idim] +
         napkin.params.ss.dx * gsl_ran_flat(napkin.rng, -1, 1),
         napkin.L);
@@ -331,7 +331,7 @@ static void move_comd(size_t const ipoly) {
     double const x = napkin.params.comd.dx * gsl_ran_flat(napkin.rng, -1, 1);
 
     for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      napkin.R[ipoly].r[ibead].d[idim] = fp_wrap(
+      napkin.R[ipoly].r[ibead].d[idim] = fp_uwrap(
           napkin.R[ipoly].r[ibead].d[idim] + x,
           napkin.L);
   }
@@ -367,7 +367,7 @@ static double Kbead(size_t const ipoly, size_t const ibead) {
     bool const p = ibead == 0 && i == 0;
     bool const q = ibead == NBEAD - 1 && i == 1;
     double (* const f)(double) = p || q ? napkin.K2end : napkin.K2;
-    size_t const jbead = size_wrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
+    size_t const jbead = size_uwrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
     size_t const jpoly = p ? napkin.R[ipoly].from :
       q ? napkin.R[ipoly].to :
       ipoly;
@@ -469,7 +469,7 @@ struct {
   double stderr; // Standard error of the mean.
 } urgh; // Worldline histogram.
 static void est_gather_x(void) {
-   double const E = fp_periodic(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
+   double const E = fp_wrap(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
    ++urgh.N;
    double const Delta = E - urgh.mean;
    urgh.mean += Delta / (double) urgh.N;
@@ -563,7 +563,7 @@ static void disp_poly(FILE* const fp) {
 
 static void disp_tde(FILE* const fp) {
   fprintf(fp, "%zu %f %f %f\n",
-      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.var);
+      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.stderr * NBEAD);
 }
 
 /*
@@ -605,7 +605,7 @@ static void status_line(void) {
       "K + V = %f + %f = %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tde.mean, napkin.tde.std,
+      napkin.tde.mean, napkin.tde.stderr * NBEAD,
       Ktotal(), Vtotal(), Ktotal() + Vtotal());
 }
 
@@ -695,7 +695,7 @@ static void not_main(void) {
   // Just to prevent empty data files...
   disp_drift(driftfp);
   fflush(driftfp);
-  disp_tde(tdefp);
+  fprintf(tdefp, "%zu %f %f %f\n", 0, E, E, 0);
   fflush(tdefp);
 
   napkin.itstep = 0;
@@ -758,6 +758,7 @@ static void not_main(void) {
 // TODO Make potentials nonisotropic.
 // TODO Abstract mean/var.
 // TODO Fix V/K scaling and offsets.
+// TODO Figure out the correlation length for `stderr`.
 // TODO Find home for lost souls.
 
 int main(void) {
