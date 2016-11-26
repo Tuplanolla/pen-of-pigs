@@ -24,6 +24,7 @@
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 #define NSUBDIV ((size_t) 16)
+#define SYMPOT ((bool) true)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -44,6 +45,28 @@ struct poly {
   size_t from;
   size_t to;
   struct bead r[NBEAD];
+};
+
+struct stats {
+  size_t N; // Samples.
+  double mean; // Mean.
+  double M2; // Second moment.
+  double var; // Variance.
+  double sd; // Standard deviation.
+  double sem; // Standard error of the mean.
+};
+
+struct estacc {
+  size_t N; // Sample accumulator.
+  double M1; // First moment accumulator.
+  double M2; // Second moment accumulator.
+};
+
+struct estsum {
+  double mean; // Mean.
+  double var; // Variance.
+  double sd; // Standard deviation.
+  double sem; // Standard error of the mean.
 };
 
 struct napkin {
@@ -88,14 +111,7 @@ struct napkin {
   double (* K)(struct bead); // Kinetic energy.
   double (* Vend)(struct bead); // Potential energy at open ends.
   double (* Kend)(struct bead); // Kinetic energy at open ends.
-  struct {
-    size_t N; // Samples.
-    double mean; // Mean.
-    double M2; // Second moment.
-    double var; // Variance.
-    double std; // Standard deviation.
-    double stderr; // Standard error of the mean.
-  } tde; // Thermodynamic estimator.
+  struct stats tde; // Thermodynamic estimator.
   struct poly R[NPOLY];
 };
 
@@ -465,6 +481,49 @@ static double Stotal(void) {
 
 // Estimators (est) -----------------------------------------------------------
 
+static struct estacc est_empty(void) {
+  struct estacc acc;
+
+  acc.N = 0;
+  acc.M1 = 0.0;
+  acc.M2 = 0.0;
+
+  return acc;
+}
+
+static struct estacc est_accum(struct estacc acc, double const x) {
+  ++acc.N;
+  double const dx = x - acc.M1;
+  acc.M1 += dx / (double) acc.N;
+  acc.M2 += dx * (x - acc.M1);
+
+  return acc;
+}
+
+static struct estsum est_summ(struct estacc const acc) {
+  struct estsum sum;
+
+  switch (acc.N) {
+    case 0:
+      sum.mean = NAN;
+      sum.var = NAN;
+      break;
+    case 1:
+      sum.mean = acc.M1;
+      sum.var = 0.0;
+      break;
+    default:
+      sum.mean = acc.M1;
+      sum.var = acc.M2 / (double) (acc.N - 1);
+  }
+
+  sum.sd = sqrt(sum.var);
+
+  sum.sem = sum.sd / sqrt((double) acc.N);
+
+  return sum;
+}
+
 // \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
 // \langle \frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\rangle
 static double est_tde(void) {
@@ -475,15 +534,15 @@ static double est_tde(void) {
 }
 
 static void est_gather_tde(void) {
-   double const E = est_tde();
-   ++napkin.tde.N;
-   double const Delta = E - napkin.tde.mean;
-   napkin.tde.mean += Delta / (double) napkin.tde.N;
-   napkin.tde.M2 += Delta * (E - napkin.tde.mean);
+  double const E = est_tde();
+  ++napkin.tde.N;
+  double const Delta = E - napkin.tde.mean;
+  napkin.tde.mean += Delta / (double) napkin.tde.N;
+  napkin.tde.M2 += Delta * (E - napkin.tde.mean);
 
-   napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
-   napkin.tde.std = sqrt(napkin.tde.var);
-   napkin.tde.stderr = sqrt(napkin.tde.var / (double) napkin.tde.N);
+  napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
+  napkin.tde.sd = sqrt(napkin.tde.var);
+  napkin.tde.sem = sqrt(napkin.tde.var / (double) napkin.tde.N);
 }
 
 // Bad.
@@ -492,18 +551,18 @@ struct {
   double mean; // Mean.
   double M2; // Second moment.
   double var; // Variance.
-  double std; // Standard deviation.
-  double stderr; // Standard error of the mean.
+  double sd; // Standard deviation.
+  double sem; // Standard error of the mean.
 } urgh; // Worldline histogram.
 static void est_gather_x(void) {
-   double const E = fp_wrap(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
-   ++urgh.N;
-   double const Delta = E - urgh.mean;
-   urgh.mean += Delta / (double) urgh.N;
-   urgh.M2 += Delta * (E - urgh.mean);
-   urgh.var = urgh.M2 / (double) (urgh.N - 1);
-   urgh.std = sqrt(urgh.var);
-   urgh.stderr = sqrt(urgh.var / (double) urgh.N);
+  double const E = fp_wrap(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
+  ++urgh.N;
+  double const Delta = E - urgh.mean;
+  urgh.mean += Delta / (double) urgh.N;
+  urgh.M2 += Delta * (E - urgh.mean);
+  urgh.var = urgh.M2 / (double) (urgh.N - 1);
+  urgh.sd = sqrt(urgh.var);
+  urgh.sem = sqrt(urgh.var / (double) urgh.N);
 }
 
 // Workers (work) -------------------------------------------------------------
@@ -590,7 +649,7 @@ static void disp_poly(FILE* const fp) {
 
 static void disp_tde(FILE* const fp) {
   fprintf(fp, "%zu %f %f %f\n",
-      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.stderr * NBEAD);
+      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.sem * NBEAD);
 }
 
 /*
@@ -682,7 +741,7 @@ static void status_line(void) {
       "K + V = %f + %f = %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tde.mean, napkin.tde.stderr * NBEAD,
+      napkin.tde.mean, napkin.tde.sem * NBEAD,
       Ktotal(), Vtotal(), Ktotal() + Vtotal());
 }
 
@@ -740,8 +799,8 @@ static void not_main(void) {
   napkin.tde.mean = 0;
   napkin.tde.M2 = 0;
   napkin.tde.var = 0; // This should go elsewhere.
-  napkin.tde.std = 0; // This should go elsewhere.
-  napkin.tde.stderr = 0; // This should go elsewhere.
+  napkin.tde.sd = 0; // This should go elsewhere.
+  napkin.tde.sem = 0; // This should go elsewhere.
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -813,7 +872,7 @@ static void not_main(void) {
   }
 
   // Bad.
-  printf("should be zero: %f +- %f\n", urgh.mean, urgh.std);
+  printf("should be zero: %f +- %f\n", urgh.mean, urgh.sd);
 
   if (fclose(tdefp) == EOF)
     err_abort(fclose);
@@ -829,16 +888,25 @@ static void not_main(void) {
 
 // TODO Try other Marsaglia's rngs (UNI or VNI had no observable effect, done).
 // TODO Split data files by dimension (use `snprintf`, done).
-// TODO Abstract mean/var.
+// TODO Abstract mean/var (half done).
 // TODO Deal with the disparity `/ 2` in Ktotal and Vtotal.
 // TODO Fix V/K scaling and offsets.
 // TODO Make periodicity conditional.
 // TODO Abstract generic calculations for qho and He-4.
-// TODO Figure out the correlation length for `stderr`.
+// TODO PIGS time!
+// TODO Figure out the correlation length for `sem`.
 // TODO Find home for lost souls.
 // TODO Consider different masses for different polymers.
 
 int main(void) {
+  struct estacc acc = est_empty();
+  acc = est_accum(acc, 1);
+  acc = est_accum(acc, 2);
+  acc = est_accum(acc, 4);
+  acc = est_accum(acc, 8);
+  struct estsum const sum = est_summ(acc);
+  printf("%f %f %f %f\n", sum.mean, sum.var, sum.sd, sum.sem);
+
   not_main();
 
   return EXIT_SUCCESS;
