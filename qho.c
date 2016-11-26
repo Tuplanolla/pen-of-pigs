@@ -47,15 +47,6 @@ struct poly {
   struct bead r[NBEAD];
 };
 
-struct stats {
-  size_t N; // Samples.
-  double mean; // Mean.
-  double M2; // Second moment.
-  double var; // Variance.
-  double sd; // Standard deviation.
-  double sem; // Standard error of the mean.
-};
-
 struct estacc {
   size_t N; // Sample accumulator.
   double M1; // First moment accumulator.
@@ -111,7 +102,10 @@ struct napkin {
   double (* K)(struct bead); // Kinetic energy.
   double (* Vend)(struct bead); // Potential energy at open ends.
   double (* Kend)(struct bead); // Kinetic energy at open ends.
-  struct stats tde; // Thermodynamic estimator.
+  struct {
+    struct estacc tde; // Thermodynamic energy estimator.
+    struct estacc clp[NDIM]; // Central link position.
+  } acc;
   struct poly R[NPOLY];
 };
 
@@ -479,7 +473,7 @@ static double Stotal(void) {
   return Vtotal() + Ktotal();
 }
 
-// Estimators (est) -----------------------------------------------------------
+// Estimator Statistics (est) -------------------------------------------------
 
 static struct estacc est_empty(void) {
   struct estacc acc;
@@ -507,22 +501,26 @@ static struct estsum est_summ(struct estacc const acc) {
     case 0:
       sum.mean = NAN;
       sum.var = NAN;
+      sum.sd = NAN;
+      sum.sem = NAN;
       break;
     case 1:
       sum.mean = acc.M1;
       sum.var = 0.0;
+      sum.sd = 0.0;
+      sum.sem = 0.0;
       break;
     default:
       sum.mean = acc.M1;
       sum.var = acc.M2 / (double) (acc.N - 1);
+      sum.sd = sqrt(sum.var);
+      sum.sem = sum.sd / sqrt((double) acc.N);
   }
-
-  sum.sd = sqrt(sum.var);
-
-  sum.sem = sum.sd / sqrt((double) acc.N);
 
   return sum;
 }
+
+// Estimators (est) -----------------------------------------------------------
 
 // \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
 // \langle \frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\rangle
@@ -531,18 +529,6 @@ static double est_tde(void) {
   double const K = Ktotal() / (4 * napkin.lambda * napkin.tau) / (NBEAD * NPOLY);
   double const V = Vtotal() * napkin.tau / (NBEAD * NPOLY);
   return (KC - K + V) / napkin.tau;
-}
-
-static void est_gather_tde(void) {
-  double const E = est_tde();
-  ++napkin.tde.N;
-  double const Delta = E - napkin.tde.mean;
-  napkin.tde.mean += Delta / (double) napkin.tde.N;
-  napkin.tde.M2 += Delta * (E - napkin.tde.mean);
-
-  napkin.tde.var = napkin.tde.M2 / (double) (napkin.tde.N - 1);
-  napkin.tde.sd = sqrt(napkin.tde.var);
-  napkin.tde.sem = sqrt(napkin.tde.var / (double) napkin.tde.N);
 }
 
 // Bad.
@@ -648,8 +634,10 @@ static void disp_poly(FILE* const fp) {
 }
 
 static void disp_tde(FILE* const fp) {
+  struct estsum const sum = est_summ(napkin.acc.tde);
   fprintf(fp, "%zu %f %f %f\n",
-      napkin.ipstep, est_tde(), napkin.tde.mean, napkin.tde.sem * NBEAD);
+      // Correlations!
+      napkin.ipstep, est_tde(), sum.mean, sum.sem * NBEAD);
 }
 
 /*
@@ -736,12 +724,14 @@ static double save_potential(void) {
 // Other Crap () --------------------------------------------------------------
 
 static void status_line(void) {
+  struct estsum const sum = est_summ(napkin.acc.tde);
   printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n"
       "K + V = %f + %f = %f\n",
       napkin.itstep, napkin.ipstep, NTSTEP, NPSTEP,
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
-      napkin.tde.mean, napkin.tde.sem * NBEAD,
+      // Correlations!
+      sum.mean, sum.sem * NBEAD,
       Ktotal(), Vtotal(), Ktotal() + Vtotal());
 }
 
@@ -795,12 +785,9 @@ static void not_main(void) {
   napkin.K = bead_norm2;
   napkin.Kend = bead_norm2;
 
-  napkin.tde.N = 0;
-  napkin.tde.mean = 0;
-  napkin.tde.M2 = 0;
-  napkin.tde.var = 0; // This should go elsewhere.
-  napkin.tde.sd = 0; // This should go elsewhere.
-  napkin.tde.sem = 0; // This should go elsewhere.
+  napkin.acc.tde = est_empty();
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    napkin.acc.clp[idim] = est_empty();
 
   gsl_rng_env_setup();
   napkin.rng = gsl_rng_alloc(gsl_rng_default);
@@ -855,10 +842,11 @@ static void not_main(void) {
 
       ++napkin.itstep;
     } else {
-      est_gather_tde();
+      napkin.acc.tde = est_accum(napkin.acc.tde, est_tde());
 
-      // Bad.
-      est_gather_x();
+      for (size_t idim = 0; idim < NDIM; ++idim)
+        napkin.acc.clp[idim] = est_accum(napkin.acc.clp[idim],
+            fp_wrap(napkin.R[0].r[NBEAD / 2].d[idim], napkin.L));
 
       if (NPRSTEP * napkin.ipstep > NPSTEP * napkin.iprstep) {
         disp_drift(driftfp);
@@ -872,7 +860,11 @@ static void not_main(void) {
   }
 
   // Bad.
-  printf("should be zero: %f +- %f\n", urgh.mean, urgh.sd);
+  for (size_t idim = 0; idim < NDIM; ++idim) {
+    struct estsum const sum = est_summ(napkin.acc.clp[idim]);
+    printf("should be zero (%zu / %zu): %f +- %f\n",
+        idim + 1, NDIM, sum.mean, sum.sem);
+  }
 
   if (fclose(tdefp) == EOF)
     err_abort(fclose);
@@ -888,9 +880,10 @@ static void not_main(void) {
 
 // TODO Try other Marsaglia's rngs (UNI or VNI had no observable effect, done).
 // TODO Split data files by dimension (use `snprintf`, done).
-// TODO Abstract mean/var (half done).
+// TODO Abstract mean/var (done).
 // TODO Deal with the disparity `/ 2` in Ktotal and Vtotal.
 // TODO Fix V/K scaling and offsets.
+// TODO Meditate about the anisotropy and symmetry of potentials.
 // TODO Make periodicity conditional.
 // TODO Abstract generic calculations for qho and He-4.
 // TODO PIGS time!
@@ -899,14 +892,6 @@ static void not_main(void) {
 // TODO Consider different masses for different polymers.
 
 int main(void) {
-  struct estacc acc = est_empty();
-  acc = est_accum(acc, 1);
-  acc = est_accum(acc, 2);
-  acc = est_accum(acc, 4);
-  acc = est_accum(acc, 8);
-  struct estsum const sum = est_summ(acc);
-  printf("%f %f %f %f\n", sum.mean, sum.var, sum.sd, sum.sem);
-
   not_main();
 
   return EXIT_SUCCESS;
