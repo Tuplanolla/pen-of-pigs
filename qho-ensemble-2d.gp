@@ -15,11 +15,11 @@ set xrange [0 - L / 2 : L + L / 2]
 set yrange [0 - L / 2 : L + L / 2]
 set object 1 rectangle from 0, 0 to L, L fillstyle empty
 plot for [dx = -L : L : L] for [dy = -L : L : L] \
-  'qho-ensemble.data' using \
+  'qho-ensemble-2d.data' using \
   ($2 + dx) : ($3 + dy) every ::0::0 \
   with points linetype 1 pointtype 7, \
   for [dx = -L : L : L] for [dy = -L : L : L] \
-  'qho-ensemble.data' using \
+  'qho-ensemble-2d.data' using \
   (fx($1, $2 + dx, $3 + dy)) : (fy($1, $2 + dx, $3 + dy)) : \
   (dfx($1, $2 + dx, $3 + dy)) : (dfy($1, $2 + dx, $3 + dy)) \
   with vectors linetype 1

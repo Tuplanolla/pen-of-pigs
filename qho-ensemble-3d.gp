@@ -24,11 +24,11 @@ set object 4 polygon from 0, L, 0 to L, L, 0 to L, L, L to 0, L, L to 0, L, 0
 set object 5 polygon from 0, 0, 0 to 0, 0, L to 0, L, L to 0, L, 0 to 0, 0, 0
 set object 6 polygon from L, 0, 0 to L, 0, L to L, L, L to L, L, 0 to L, 0, 0
 splot for [dx = -L : L : L] for [dy = -L : L : L] for [dz = -L : L : L] \
-  'qho-ensemble.data' using \
+  'qho-ensemble-3d.data' using \
   ($2 + dx) : ($3 + dy) : ($4 + dz) every ::0::0 \
   with points linetype 1 pointtype 7, \
   for [dx = -L : L : L] for [dy = -L : L : L] for [dz = -L : L : L] \
-  'qho-ensemble.data' using \
+  'qho-ensemble-3d.data' using \
   (fx($1, $2 + dx, $3 + dy, $4 + dz)) : \
   (fy($1, $2 + dx, $3 + dy, $4 + dz)) : \
   (fz($1, $2 + dx, $3 + dy, $4 + dz)) : \

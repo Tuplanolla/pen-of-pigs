@@ -174,6 +174,16 @@ static void force_open(void) {
   }
 }
 
+/*
+Cycle the current configuration.
+*/
+static void force_cycle(void) {
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    napkin.R[ipoly].from = size_uwrap(ipoly + NPOLY - 1, NPOLY);
+    napkin.R[ipoly].to = size_uwrap(ipoly + 1, NPOLY);
+  }
+}
+
 // Initial Configurations (conf) ----------------------------------------------
 
 /*
@@ -379,6 +389,7 @@ static double const omega = 1; // HP
 
 // System-Specific Quantities () ----------------------------------------------
 
+// Ktotal does double the work here.
 static double Kbead(size_t const ipoly, size_t const ibead) {
   double K = 0;
 
@@ -605,11 +616,59 @@ static void save_length(void) {
 }
 
 static void save_esl(void) {
-  FILE* const fp = fopen("qho-ensemble.data", "w");
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-ensemble-%zud.data", NDIM) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
   if (fp == NULL)
     err_abort(fopen);
 
   disp_poly(fp);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
+static double save_subdivisions(void) {
+  FILE* const fp = fopen("qho-subdivisions.data", "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  fprintf(fp, "%zu\n", NSUBDIV);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
+static double save_potential(void) {
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-potential-%zud.data", NDIM) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  double const v = napkin.L / NSUBDIV;
+
+  for (size_t i = 0; i < size_pow(NSUBDIV + 1, NDIM); ++i) {
+    size_t m = i;
+
+    struct bead r;
+
+    for (size_t idim = 0; idim < NDIM; ++idim) {
+      size_div_t const z = size_div(m, NSUBDIV + 1);
+
+      r.d[idim] = (double) z.rem * v;
+      m = z.quot;
+    }
+
+    for (size_t idim = 0; idim < NDIM; ++idim)
+      fprintf(fp, "%f ", r.d[idim]);
+
+    fprintf(fp, "%f\n", napkin.Vext(r));
+  }
 
   if (fclose(fp) == EOF)
     err_abort(fclose);
@@ -639,46 +698,6 @@ static double lj612b(struct bead const r) {
 
 static double harmb(struct bead const r) {
   return m * gsl_pow_2(omega) * bead_norm2(bead_wrap(r)) / 2;
-}
-
-static double sproink(void) {
-  FILE* const fp = fopen("qho-subdivisions.data", "w");
-  if (fp == NULL)
-    err_abort(fopen);
-
-  fprintf(fp, "%zu\n", NSUBDIV);
-
-  if (fclose(fp) == EOF)
-    err_abort(fclose);
-}
-
-static double splat(void) {
-  FILE* const fp = fopen("qho-potential.data", "w");
-  if (fp == NULL)
-    err_abort(fopen);
-
-  double const v = napkin.L / NSUBDIV;
-
-  for (size_t i = 0; i < size_pow(NSUBDIV + 1, NDIM); ++i) {
-    size_t m = i;
-
-    struct bead r;
-
-    for (size_t idim = 0; idim < NDIM; ++idim) {
-      size_div_t const z = size_div(m, NSUBDIV + 1);
-
-      r.d[idim] = (double) z.rem * v;
-      m = z.quot;
-    }
-
-    for (size_t idim = 0; idim < NDIM; ++idim)
-      fprintf(fp, "%f ", r.d[idim]);
-
-    fprintf(fp, "%f\n", napkin.Vext(r));
-  }
-
-  if (fclose(fp) == EOF)
-    err_abort(fclose);
 }
 
 static double (* const workers[])(void) = {work_ss, work_comd};
@@ -732,8 +751,8 @@ static void not_main(void) {
 
   save_length();
 
-  sproink();
-  splat();
+  save_subdivisions();
+  save_potential();
 
   FILE* const driftfp = fopen("qho-drift.data", "w");
   if (driftfp == NULL)
@@ -808,15 +827,16 @@ static void not_main(void) {
   gsl_rng_free(napkin.rng);
 }
 
-// TODO Split data files by dimension (use `sprintf`).
+// TODO Try other Marsaglia's rngs (UNI or VNI had no observable effect, done).
+// TODO Split data files by dimension (use `snprintf`, done).
 // TODO Abstract mean/var.
+// TODO Deal with the disparity `/ 2` in Ktotal and Vtotal.
 // TODO Fix V/K scaling and offsets.
 // TODO Make periodicity conditional.
 // TODO Abstract generic calculations for qho and He-4.
 // TODO Figure out the correlation length for `stderr`.
 // TODO Find home for lost souls.
 // TODO Consider different masses for different polymers.
-// TODO Try other Marsaglia's rngs (tried {U,V}NI with no observable effect).
 
 int main(void) {
   not_main();
