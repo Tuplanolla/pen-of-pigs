@@ -7,11 +7,11 @@ double fp_identity(double const x) {
 }
 
 double fp_zero(__attribute__ ((__unused__)) double const x) {
-  return 0;
+  return 0.0;
 }
 
 double fp_one(__attribute__ ((__unused__)) double const x) {
-  return 1;
+  return 1.0;
 }
 
 int fp_cmp(double const x, double const y) {
@@ -19,7 +19,7 @@ int fp_cmp(double const x, double const y) {
 }
 
 double fp_midpoint(double const x, double const y) {
-  return (x + y) / 2;
+  return (x + y) / 2.0;
 }
 
 fp_div_t fp_div(double const x, double const y) {
