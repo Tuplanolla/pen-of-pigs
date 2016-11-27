@@ -24,7 +24,7 @@
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 #define NSUBDIV ((size_t) 16)
-#define SYMPOT ((bool) true)
+#define PERIODIC ((bool) true)
 
 /*
 These assertions guarantee that adding or multiplying two steps or indices
@@ -97,11 +97,11 @@ struct napkin {
   double beta;
   double lambda;
   double tau;
+  double (* Kint)(struct bead); // Kinetic between beads.
+  double (* Vint)(struct bead); // Potential between beads.
+  double (* Kend)(struct bead); // Kinetic between ends.
+  double (* Vend)(struct bead); // Potential between ends.
   double (* Vext)(struct bead); // External potential.
-  double (* V)(struct bead); // Potential energy.
-  double (* K)(struct bead); // Kinetic energy.
-  double (* Vend)(struct bead); // Potential energy at open ends.
-  double (* Kend)(struct bead); // Kinetic energy at open ends.
   struct {
     struct estacc tde; // Thermodynamic energy estimator.
     struct estacc clp[NDIM]; // Central link position.
@@ -124,8 +124,9 @@ static struct napkin napkin;
 static struct bead bead_uwrap(struct bead const r) {
   struct bead s;
 
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    s.d[idim] = fp_uwrap(r.d[idim], napkin.L);
+  if (PERIODIC)
+    for (size_t idim = 0; idim < NDIM; ++idim)
+      s.d[idim] = fp_uwrap(r.d[idim], napkin.L);
 
   return s;
 }
@@ -133,13 +134,14 @@ static struct bead bead_uwrap(struct bead const r) {
 static struct bead bead_wrap(struct bead const r) {
   struct bead s;
 
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    s.d[idim] = fp_wrap(r.d[idim], napkin.L);
+  if (PERIODIC)
+    for (size_t idim = 0; idim < NDIM; ++idim)
+      s.d[idim] = fp_wrap(r.d[idim], napkin.L);
 
   return s;
 }
 
-// This only takes the closest periodic image into account.
+// TODO This only takes the closest periodic image into account.
 static struct bead bead_sub(struct bead const r0, struct bead const r1) {
   struct bead r;
 
@@ -397,80 +399,87 @@ static double const epsilon = 1; // L--J 6--12 P
 static double const sigma = 1; // L--J 6--12 P
 static double const omega = 1; // HP
 
-// System-Specific Quantities () ----------------------------------------------
+// Kinetic and Potential Energies (K, V) --------------------------------------
 
-// Ktotal does double the work here.
-static double Kbead(size_t const ipoly, size_t const ibead) {
-  double K = 0;
-
-  for (int i = 0; i < 2; ++i) {
-    bool const p = ibead == 0 && i == 0;
-    bool const q = ibead == NBEAD - 1 && i == 1;
-    double (* const f)(struct bead) = p || q ? napkin.Kend : napkin.K;
-    size_t const jbead = size_uwrap(i == 0 ? ibead - 1 : ibead + 1, NBEAD);
-    size_t const jpoly = p ? napkin.R[ipoly].from :
-      q ? napkin.R[ipoly].to :
-      ipoly;
-
-    if (jpoly != SIZE_MAX)
-      K += f(bead_sub(napkin.R[ipoly].r[ibead], napkin.R[jpoly].r[jbead]));
-  }
-
-  return K;
+static double K_polybead_bw(size_t const ipoly, size_t const ibead) {
+  if (ibead == 0) {
+    size_t const jpoly = napkin.R[ipoly].from;
+    if (jpoly == SIZE_MAX)
+      return 0;
+    else
+      return napkin.Kend(bead_sub(napkin.R[ipoly].r[ibead],
+            napkin.R[jpoly].r[NBEAD - 1]));
+  } else
+    return napkin.Kint(bead_sub(napkin.R[ipoly].r[ibead],
+          napkin.R[ipoly].r[ibead - 1]));
 }
 
-static double Kpoly(size_t const ipoly) {
+static double K_polybead_fw(size_t const ipoly, size_t const ibead) {
+  if (ibead == NBEAD - 1) {
+    size_t const jpoly = napkin.R[ipoly].to;
+    if (jpoly == SIZE_MAX)
+      return 0;
+    else
+      return napkin.Kend(bead_sub(napkin.R[ipoly].r[ibead],
+            napkin.R[jpoly].r[0]));
+  } else
+    return napkin.Kint(bead_sub(napkin.R[ipoly].r[ibead],
+          napkin.R[ipoly].r[ibead + 1]));
+}
+
+static double K_polybead(size_t const ipoly, size_t const ibead) {
+  return K_polybead_bw(ipoly, ibead) + K_polybead_fw(ipoly, ibead);
+}
+
+static double K_poly(size_t const ipoly) {
   double K = 0;
 
   for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-    K += Kbead(ipoly, ibead);
-
-  return K / 2;
-}
-
-// The log(2 * M_2PI * lambda * tau) term is not here
-// due to scaling and offsets?
-static double Ktotal(void) {
-  double K = 0;
-
-  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
-    K += Kpoly(ipoly);
+    K += K_polybead_fw(ipoly, ibead);
 
   return K;
 }
 
-static double Vextbead(size_t const ipoly, size_t const ibead) {
+static double K_total(void) {
+  double K = 0;
+
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
+    K += K_poly(ipoly);
+
+  return K;
+}
+
+static double Vext_polybead(size_t const ipoly, size_t const ibead) {
   return napkin.Vext(napkin.R[ipoly].r[ibead]);
 }
 
-static double Vbeads(size_t const ibead) {
+static double Vint_bead(size_t const ibead) {
   double V = 0;
 
-  bool const p = ibead == 0 || ibead == NBEAD - 1;
-  double (* const f)(struct bead) = p ? napkin.Vend : napkin.V;
+  // TODO Does this make sense?
+  double (* const Vf)(struct bead) = ibead == 0 || ibead == NBEAD - 1 ?
+    napkin.Vend :
+    napkin.Vint;
 
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
-      V += f(bead_sub(napkin.R[ipoly].r[ibead], napkin.R[jpoly].r[ibead]));
+      V += Vf(bead_sub(napkin.R[ipoly].r[ibead],
+            napkin.R[jpoly].r[ibead]));
 
   return V;
 }
 
-static double Vtotal(void) {
+static double V_total(void) {
   double V = 0;
 
   for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
-    V += Vbeads(ibead);
+    V += Vint_bead(ibead);
 
     for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
-      V += Vextbead(ipoly, ibead);
+      V += Vext_polybead(ipoly, ibead);
   }
 
   return V;
-}
-
-static double Stotal(void) {
-  return Vtotal() + Ktotal();
 }
 
 // Estimator Statistics (est) -------------------------------------------------
@@ -526,29 +535,9 @@ static struct estsum est_summ(struct estacc const acc) {
 // \langle \frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\rangle
 static double est_tde(void) {
   double const KC = (double) NDIM / 2;
-  double const K = Ktotal() / (4 * napkin.lambda * napkin.tau) / (NBEAD * NPOLY);
-  double const V = Vtotal() * napkin.tau / (NBEAD * NPOLY);
+  double const K = K_total() / (4 * napkin.lambda * napkin.tau) / (NBEAD * NPOLY);
+  double const V = V_total() * napkin.tau / (NBEAD * NPOLY);
   return (KC - K + V) / napkin.tau;
-}
-
-// Bad.
-struct {
-  size_t N; // Samples.
-  double mean; // Mean.
-  double M2; // Second moment.
-  double var; // Variance.
-  double sd; // Standard deviation.
-  double sem; // Standard error of the mean.
-} urgh; // Worldline histogram.
-static void est_gather_x(void) {
-  double const E = fp_wrap(napkin.R[0].r[NBEAD / 2].d[0], napkin.L);
-  ++urgh.N;
-  double const Delta = E - urgh.mean;
-  urgh.mean += Delta / (double) urgh.N;
-  urgh.M2 += Delta * (E - urgh.mean);
-  urgh.var = urgh.M2 / (double) (urgh.N - 1);
-  urgh.sd = sqrt(urgh.var);
-  urgh.sem = sqrt(urgh.var / (double) urgh.N);
 }
 
 // Workers (work) -------------------------------------------------------------
@@ -557,14 +546,14 @@ static double work_ss(void) {
   size_t const ipoly = ran_index(napkin.rng, NPOLY);
   size_t const ibead = ran_index(napkin.rng, NBEAD);
 
-  // Local `Vbeads`, because the rest stays the same.
-  double const V0 = Vbeads(ibead) + Vextbead(ipoly, ibead);
-  double const K0 = Kbead(ipoly, ibead);
+  // Local `Vint_bead`, because the rest stays the same.
+  double const V0 = Vint_bead(ibead) + Vext_polybead(ipoly, ibead);
+  double const K0 = K_polybead(ipoly, ibead);
 
   move_ss(ipoly, ibead);
 
-  double const V1 = Vbeads(ibead) + Vextbead(ipoly, ibead);
-  double const K1 = Kbead(ipoly, ibead);
+  double const V1 = Vint_bead(ibead) + Vext_polybead(ipoly, ibead);
+  double const K1 = K_polybead(ipoly, ibead);
 
   double const DeltaS_V = (V1 - V0) * napkin.tau;
   double const DeltaS_K = (K1 - K0) / (4 * napkin.lambda * napkin.tau);
@@ -575,12 +564,12 @@ static double work_ss(void) {
 static double work_comd(void) {
   size_t const ipoly = ran_index(napkin.rng, NPOLY);
 
-  // Global `Vtotal`, because `K` is unchanged (maybe not for permutations).
-  double const V0 = Vtotal();
+  // Global `V_total`, because `K` is unchanged (maybe not for permutations).
+  double const V0 = V_total();
 
   move_comd(ipoly);
 
-  double const V1 = Vtotal();
+  double const V1 = V_total();
 
   double const DeltaS_V = (V1 - V0) * napkin.tau;
 
@@ -605,9 +594,6 @@ static void choose(double const DeltaS) {
 
 // Printing into Data Files (disp) --------------------------------------------
 
-/*
-Print bead into stream `fp`.
-*/
 static void disp_bead(FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   fprintf(fp, "%zu", iindex);
@@ -618,9 +604,6 @@ static void disp_bead(FILE* const fp,
   fprintf(fp, "\n");
 }
 
-/*
-Print polymer into stream `fp`.
-*/
 static void disp_poly(FILE* const fp) {
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
     for (size_t ibead = 0; ibead < NBEAD; ++ibead)
@@ -640,9 +623,6 @@ static void disp_tde(FILE* const fp) {
       napkin.ipstep, est_tde(), sum.mean, sum.sem * NBEAD);
 }
 
-/*
-Print parameters into stream `fp`.
-*/
 static void disp_drift(FILE* const fp) {
   fprintf(fp, "%zu %f %f\n",
       napkin.itstep + napkin.ipstep,
@@ -732,7 +712,7 @@ static void status_line(void) {
       100 * (napkin.itstep + napkin.ipstep) / (NTSTEP + NPSTEP),
       // Correlations!
       sum.mean, sum.sem * NBEAD,
-      Ktotal(), Vtotal(), Ktotal() + Vtotal());
+      K_total(), V_total(), K_total() + V_total());
 }
 
 static void status_file(void) {
@@ -747,6 +727,10 @@ static double lj612b(struct bead const r) {
 
 static double harmb(struct bead const r) {
   return m * gsl_pow_2(omega) * bead_norm2(bead_wrap(r)) / 2;
+}
+
+static double zerob(__attribute__ ((__unused__)) struct bead const r) {
+  return 0;
 }
 
 static double (* const workers[])(void) = {work_ss, work_comd};
@@ -777,12 +761,12 @@ static void not_main(void) {
 
   double const q = hbar * omega / 2;
   double const E = q / tanh(q * napkin.beta);
-  printf("expect: E = %f\n", E);
+  printf("expect in 1d: E = %f\n", E);
 
   napkin.Vext = harmb;
-  napkin.V = lj612b;
+  napkin.Vint = lj612b;
   napkin.Vend = lj612b;
-  napkin.K = bead_norm2;
+  napkin.Kint = bead_norm2;
   napkin.Kend = bead_norm2;
 
   napkin.acc.tde = est_empty();
@@ -878,15 +862,18 @@ static void not_main(void) {
   gsl_rng_free(napkin.rng);
 }
 
+// Main and Procrastination () ------------------------------------------------
+
 // TODO Try other Marsaglia's rngs (UNI or VNI had no observable effect, done).
 // TODO Split data files by dimension (use `snprintf`, done).
 // TODO Abstract mean/var (done).
-// TODO Deal with the disparity `/ 2` in Ktotal and Vtotal.
+// TODO Meditate about the anisotropy and symmetry of potentials (done).
+// TODO Deal with the disparity `/ 2` in K_total and V_total (done).
+// TODO Make periodicity conditional (half done).
 // TODO Fix V/K scaling and offsets.
-// TODO Meditate about the anisotropy and symmetry of potentials.
-// TODO Make periodicity conditional.
 // TODO Abstract generic calculations for qho and He-4.
 // TODO PIGS time!
+// TODO Consider producing a histogram.
 // TODO Figure out the correlation length for `sem`.
 // TODO Find home for lost souls.
 // TODO Consider different masses for different polymers.
