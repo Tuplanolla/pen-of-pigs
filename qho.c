@@ -67,9 +67,26 @@ struct estsum {
   double sem; // Standard error of the mean.
 };
 
+
+struct step {
+  size_t therm; // Thermalization steps.
+  size_t prod; // Production steps.
+  size_t thermrec; // Recording steps during thermalization.
+  size_t prodrec; // Recording steps during production.
+};
+
 struct napkin {
   gsl_rng* rng; // State of the random number generator.
-  struct bead origin;
+  struct step n; // Eventually...
+  struct step i;
+  bool periodic; // Eventually...
+  double (* Vint)(struct bead); // Potential between beads.
+  double (* Vend)(struct bead); // Extra potential between ends.
+  double (* Vext)(struct bead); // External potential.
+  double L; // Lattice constant.
+  double beta; // Inverse temperature sometimes.
+  double lambda; // De Broglie thing.
+  double tau; // Imaginary time step maybe.
   struct {
     struct {
       size_t accepted;
@@ -96,19 +113,6 @@ struct napkin {
   void (* accept)(void); // Procedures for processing the latest move.
   void (* reject)(void);
   void (* adjust)(void);
-  struct {
-    size_t it; // Thermalization steps taken.
-    size_t ip; // Production steps taken.
-    size_t itr; // Recording steps taken.
-    size_t ipr; // Recording steps taken.
-  } step;
-  double (* Vint)(struct bead); // Potential between beads.
-  double (* Vend)(struct bead); // Extra potential between ends.
-  double (* Vext)(struct bead); // External potential.
-  double L; // Lattice constant.
-  double beta; // Inverse temperature sometimes.
-  double lambda; // De Broglie thing.
-  double tau; // Imaginary time step maybe.
   struct {
     struct estacc tde; // Thermodynamic energy estimator.
     struct estacc clp[NDIM]; // Central link position.
@@ -410,7 +414,7 @@ static double const epsilon = 1.0; // L--J 6--12 P
 static double const sigma = 1.0; // L--J 6--12 P
 static double const omega = 1.0; // HP
 
-// Kinetic and Potential Energies and Action (K, V, S) --------------------------------------
+// Kinetic and Potential Energies (K, V) --------------------------------------
 
 static double K_polybead_bw(size_t const ipoly, size_t const ibead) {
   if (ibead == 0) {
@@ -669,12 +673,12 @@ static void disp_tde(FILE* const fp) {
 
   fprintf(fp, "%zu %f %f %f\n",
       // Correlations!
-      napkin.step.ip, est_tde(), sum.mean, sum.sem * NBEAD);
+      napkin.i.prod, est_tde(), sum.mean, sum.sem * NBEAD);
 }
 
 static void disp_drift(FILE* const fp) {
   fprintf(fp, "%zu %f %f\n",
-      napkin.step.it + napkin.step.ip,
+      napkin.i.therm + napkin.i.prod,
       napkin.params.ss.dx, napkin.params.comd.dx);
 }
 
@@ -757,8 +761,8 @@ static void status_line(void) {
 
   printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n",
-      napkin.step.it, napkin.step.ip, NTSTEP, NPSTEP,
-      100 * (napkin.step.it + napkin.step.ip) / (NTSTEP + NPSTEP),
+      napkin.i.therm, napkin.i.prod, NTSTEP, NPSTEP,
+      100 * (napkin.i.therm + napkin.i.prod) / (NTSTEP + NPSTEP),
       // Correlations!
       sum.mean, sum.sem * NBEAD);
 }
@@ -804,9 +808,6 @@ static void not_main(void) {
   napkin.lambda = gsl_pow_2(hbar) / (2.0 * m);
   napkin.tau = napkin.beta / NBEAD;
 
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    napkin.origin.d[idim] = 0;
-
   double const q = hbar * omega / 2.0;
   double const E = q / tanh(q * napkin.beta);
   printf("expect in 1d: E = %f\n", E);
@@ -846,13 +847,19 @@ static void not_main(void) {
 
   static double (* const workers[])(void) = {work_ss, work_comd};
 
-  napkin.step.it = 0;
-  napkin.step.ip = 0;
-  napkin.step.itr = 0;
-  napkin.step.ipr = 0;
+  napkin.n.therm = NTSTEP;
+  napkin.n.prod = NPSTEP;
+  napkin.n.thermrec = NTRSTEP;
+  napkin.n.prodrec = NPRSTEP;
+
+  napkin.i.therm = 0;
+  napkin.i.prod = 0;
+  napkin.i.thermrec = 0;
+  napkin.i.prodrec = 0;
+
+  napkin.periodic = PERIODIC;
 
   for (size_t istep = 0; istep < NTSTEP + NPSTEP; ++istep) {
-
     choose(workers[ran_index(napkin.rng, sizeof workers / sizeof *workers)]());
 
     int signum;
@@ -867,13 +874,13 @@ static void not_main(void) {
       }
 
     if (istep < NTSTEP) {
-      if (NPRSTEP * napkin.step.it > NPSTEP * napkin.step.itr) {
+      if (NPRSTEP * napkin.i.therm > NPSTEP * napkin.i.thermrec) {
         disp_drift(driftfp);
 
-        ++napkin.step.itr;
+        ++napkin.i.thermrec;
       }
 
-      ++napkin.step.it;
+      ++napkin.i.therm;
     } else {
       napkin.acc.tde = est_accum(napkin.acc.tde, est_tde());
 
@@ -881,14 +888,14 @@ static void not_main(void) {
         napkin.acc.clp[idim] = est_accum(napkin.acc.clp[idim],
             fp_wrap(napkin.R[0].r[NBEAD / 2].d[idim], napkin.L));
 
-      if (NPRSTEP * napkin.step.ip > NPSTEP * napkin.step.ipr) {
+      if (NPRSTEP * napkin.i.prod > NPSTEP * napkin.i.prodrec) {
         disp_drift(driftfp);
         disp_tde(tdefp);
 
-        ++napkin.step.ipr;
+        ++napkin.i.prodrec;
       }
 
-      ++napkin.step.ip;
+      ++napkin.i.prod;
     }
   }
 
@@ -920,12 +927,12 @@ static void not_main(void) {
 // TODO Meditate about the anisotropy and symmetry of potentials (done).
 // TODO Deal with the disparity `/ 2` in K_total and V_total (done).
 // TODO Make periodicity conditional (half done).
+// TODO Consider producing a histogram (half done).
 // TODO Fix V/K scaling and offsets (done).
 // TODO Abstract generic calculations for qho and He-4.
 // TODO PIGS time!
-// TODO Consider producing a histogram.
-// TODO Figure out the correlation length for `sem`.
-// TODO Find home for lost souls.
+// TODO Figure out the correlation length for `sem` (half done).
+// TODO Find home for lost souls (half done).
 // TODO Consider different masses for different polymers.
 
 int main(void) {
