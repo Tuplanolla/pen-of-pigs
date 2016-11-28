@@ -42,11 +42,9 @@ void sigs_handler(int const signum) {
     SIGS_UNSET;
 }
 
-/*
-This is possible if `signal` provides
-BSD semantics instead of System V semantics,
-but why bother with `signal` when `sigaction` exists?
-*/
+// This is possible if `signal` provides
+// BSD semantics instead of System V semantics,
+// but why bother with `signal` when `sigaction` exists?
 __attribute__ ((__unused__))
 static size_t _sigs_register(int const* const sigs, size_t const n) {
   for (size_t i = 0; i < n; ++i)

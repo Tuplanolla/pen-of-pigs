@@ -12,14 +12,12 @@ void err_reset(void) {
   t0 = secs_now();
 }
 
-/*
-The handling of `errno` respects the following statement from N1570.
-
-> The value of errno may be set to nonzero
-> by a library function call whether or not there is an error,
-> provided the use of errno is not documented
-> in the description of the function in this International Standard.
-*/
+// The handling of `errno` respects the following statement from N1570.
+//
+// > The value of errno may be set to nonzero
+// > by a library function call whether or not there is an error,
+// > provided the use of errno is not documented
+// > in the description of the function in this International Standard.
 void err_msg_with(char const* const func, char const* const file,
     size_t const line, char const* const str) {
   int const n = errno;

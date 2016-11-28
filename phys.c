@@ -2,6 +2,9 @@
 #include "phys.h"
 #include <gsl/gsl_math.h>
 
+double const hbar = 1.0;
+double const kB = 1.0;
+
 double lj612(double const r, double const sigma, double const epsilon) {
   double const sigmar6 = gsl_pow_6(sigma / r);
 
@@ -53,7 +56,7 @@ double hermite(unsigned int const n, double const x) {
         + 3360 * gsl_pow_uint(x, 3)
         - 1680 * x;
     default:
-      /* return 2 * x * hermite(n - 1, x) - dhermite(n - 1, x); */
+      // return 2 * x * hermite(n - 1, x) - dhermite(n - 1, x);
       err_abort(hermite);
   }
 }
