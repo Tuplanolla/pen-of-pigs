@@ -28,6 +28,7 @@ void err_reset(void);
 // * `"procedure: message"`, mimicking `perror`.
 //
 // It is better to use `err_msg` instead of calling `err_msg_with` directly.
+__attribute__ ((__nonnull__ (1, 2)))
 void err_msg_with(char const*, char const*, size_t, char const*);
 
 // The preprocessor directive `err_msg(p)` prints a detailed error message
