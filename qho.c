@@ -22,8 +22,8 @@
 #define NDIM ((size_t) 1)
 #define NSUBDIV ((size_t) 16)
 
-#define NTSTEP ((size_t) 1 << 14)
-#define NPSTEP ((size_t) 1 << 18)
+#define NTSTEP ((size_t) 1 << 4)
+#define NPSTEP ((size_t) 1 << 8)
 #define NTRSTEP ((size_t) 1 << 4)
 #define NPRSTEP ((size_t) 1 << 8)
 
@@ -804,49 +804,102 @@ static double zerob(__attribute__ ((__unused__))
   return 0.0;
 }
 
+// Allocation (alloc) ---------------------------------------------------------
+
+typedef void* (* alloc)(size_t);
+
+static void* alloc_err(__attribute__ ((__unused__)) size_t const n) {
+  return NULL;
+}
+
+// Napkin Management (napkin) -------------------------------------------------
+
+void napkin_free(struct napkin* const napkin) {
+  if (napkin != NULL) {
+    if (napkin->history.comd.R.r != NULL)
+      for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+        free(napkin->history.comd.R.r[ibead].d);
+
+    free(napkin->history.comd.R.r);
+
+    free(napkin->history.ssm.r.d);
+
+    if (napkin->R != NULL)
+      for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+        if (napkin->R[ipoly].r != NULL)
+          for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+            free(napkin->R[ipoly].r[ibead].d);
+
+        free(napkin->R[ipoly].r);
+      }
+
+    free(napkin->R);
+
+    gsl_rng_free(napkin->rng);
+  }
+
+  free(napkin);
+}
+
+struct napkin* napkin_alloc(void) {
+  alloc alloc = malloc;
+
+  struct napkin* const napkin = alloc(sizeof *napkin);
+  if (napkin == NULL)
+    alloc = alloc_err;
+  else {
+    gsl_rng_type const* const t = gsl_rng_env_setup();
+    napkin->rng = gsl_rng_alloc(t);
+    if (napkin->rng == NULL)
+      alloc = alloc_err;
+
+    napkin->R = alloc(NPOLY * sizeof *napkin->R);
+    if (napkin->R == NULL)
+      alloc = alloc_err;
+    else
+      for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+        napkin->R[ipoly].r = alloc(NBEAD * sizeof *napkin->R[ipoly].r);
+        if (napkin->R[ipoly].r == NULL)
+          alloc = alloc_err;
+        else
+          for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
+            napkin->R[ipoly].r[ibead].d =
+              alloc(NDIM * sizeof *napkin->R[ipoly].r[ibead].d);
+            if (napkin->R[ipoly].r[ibead].d == NULL)
+              alloc = alloc_err;
+          }
+      }
+
+    napkin->history.ssm.r.d = alloc(NDIM * sizeof *napkin->history.ssm.r.d);
+    if (napkin->history.ssm.r.d == NULL)
+      alloc = alloc_err;
+
+    napkin->history.comd.R.r = alloc(NBEAD * sizeof *napkin->history.comd.R.r);
+    if (napkin->history.comd.R.r == NULL)
+      alloc = alloc_err;
+    else
+      for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
+        napkin->history.comd.R.r[ibead].d =
+          alloc(NDIM * sizeof *napkin->history.comd.R.r[ibead].d);
+        if (napkin->history.comd.R.r[ibead].d == NULL)
+          alloc = alloc_err;
+      }
+  }
+
+  if (alloc == alloc_err) {
+    napkin_free(napkin);
+
+    return NULL;
+  } else
+    return napkin;
+}
+
 static void not_main(void) {
   err_reset();
 
-  struct napkin* const napkin = malloc(sizeof *napkin);
+  struct napkin* const napkin = napkin_alloc();
   if (napkin == NULL)
-    err_abort(malloc);
-
-  gsl_rng_type const* const t = gsl_rng_env_setup();
-  napkin->rng = gsl_rng_alloc(t);
-  if (napkin->rng == NULL)
-    err_abort(gsl_rng_alloc);
-
-  napkin->R = malloc(NPOLY * sizeof *napkin->R);
-  if (napkin->R == NULL)
-    err_abort(malloc);
-
-  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
-    napkin->R[ipoly].r = malloc(NBEAD * sizeof *napkin->R[ipoly].r);
-    if (napkin->R[ipoly].r == NULL)
-      err_abort(malloc);
-
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
-      napkin->R[ipoly].r[ibead].d =
-        malloc(NDIM * sizeof *napkin->R[ipoly].r[ibead].d);
-      if (napkin->R[ipoly].r[ibead].d == NULL)
-        err_abort(malloc);
-    }
-  }
-
-  napkin->history.ssm.r.d = malloc(NDIM * sizeof *napkin->history.ssm.r.d);
-  if (napkin->history.ssm.r.d == NULL)
-    err_abort(malloc);
-
-  napkin->history.comd.R.r = malloc(NBEAD * sizeof *napkin->history.comd.R.r);
-  if (napkin->history.comd.R.r == NULL)
-    err_abort(malloc);
-
-  for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
-    napkin->history.comd.R.r[ibead].d =
-      malloc(NDIM * sizeof *napkin->history.comd.R.r[ibead].d);
-    if (napkin->history.comd.R.r[ibead].d == NULL)
-      err_abort(malloc);
-  }
+    err_abort(napkin_alloc);
 
   int const sigs[] = {SIGUSR1, SIGUSR2};
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
@@ -976,25 +1029,7 @@ static void not_main(void) {
   status_line(napkin);
   status_file(napkin);
 
-  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-    free(napkin->history.comd.R.r[ibead].d);
-
-  free(napkin->history.comd.R.r);
-
-  free(napkin->history.ssm.r.d);
-
-  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
-      free(napkin->R[ipoly].r[ibead].d);
-
-    free(napkin->R[ipoly].r);
-  }
-
-  free(napkin->R);
-
-  gsl_rng_free(napkin->rng);
-
-  free(napkin);
+  napkin_free(napkin);
 }
 
 // Main and Procrastination () ------------------------------------------------
