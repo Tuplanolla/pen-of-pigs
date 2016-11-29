@@ -6,6 +6,8 @@
 #include <stddef.h>
 
 #define SQRT_SIZE_MAX ((size_t) 1 << CHAR_BIT * sizeof (size_t) / 2)
+#define CBRT_SIZE_MAX ((size_t) 1 << CHAR_BIT * sizeof (size_t) / 3)
+#define QDRT_SIZE_MAX ((size_t) 1 << CHAR_BIT * sizeof (size_t) / 4)
 
 // The statement `x = size_identity(x)` does not do anything.
 // This is analogous to `fp_identity`.

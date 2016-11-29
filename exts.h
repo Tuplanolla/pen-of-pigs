@@ -26,6 +26,12 @@
 #define static_assert(p, _) _static_assert((p), __LINE__)
 #endif
 
+// This preprocessor directive is equivalent to `assert`
+// with an extra parameter, which makes it consistent with `static_assert`.
+#ifndef dynamic_assert
+#define dynamic_assert(p, s) assert(p)
+#endif
+
 // This preprocessor directive makes it possible to write `for ever`.
 // This is very important.
 #ifndef ever
