@@ -17,9 +17,9 @@
 
 // Static Constants (N) -------------------------------------------------------
 
-#define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 64)
+#define NDIM ((size_t) 1)
 #define NSUBDIV ((size_t) 16)
 
 #define NTSTEP ((size_t) 1 << 14)
@@ -64,22 +64,22 @@ struct step {
 };
 
 struct bead {
-  double d[NDIM];
+  double* d;
 };
 
 struct poly {
   double m;
   size_t from;
   size_t to;
-  struct bead r[NBEAD];
+  struct bead* r;
 };
 
 struct napkin {
   gsl_rng* rng; // State of the random number generator.
   struct step n; // Eventually...
   struct step i;
-  double (* Vint)(struct napkin const*, struct bead); // Potential between beads.
-  double (* Vend)(struct napkin const*, struct bead); // Extra potential between ends.
+  double (* Vint)(struct napkin const*, struct bead, struct bead); // Potential between beads.
+  double (* Vend)(struct napkin const*, struct bead, struct bead); // Extra potential between ends.
   double (* Vext)(struct napkin const*, struct bead); // External potential.
   double L; // Lattice constant.
   double beta; // Inverse temperature sometimes.
@@ -90,19 +90,19 @@ struct napkin {
       size_t accepted;
       size_t rejected;
       double dx;
-    } ss; // Single slice.
+    } ssm; // Single slice move.
     struct {
       size_t accepted;
       size_t rejected;
       double dx;
     } comd; // Center of mass displacement.
   } params; // Optimization parameters of each move.
-  union {
+  struct {
     struct {
       size_t ipoly;
       size_t ibead;
       struct bead r;
-    } ss;
+    } ssm;
     struct {
       size_t ipoly;
       struct poly R;
@@ -115,7 +115,10 @@ struct napkin {
     struct estacc tde; // Thermodynamic energy estimator.
     struct estacc clp[NDIM]; // Central link position.
   } acc; // Estimator accumulators.
-  struct poly R[NPOLY];
+  size_t npoly;
+  size_t nbead;
+  size_t ndim;
+  struct poly* R;
 };
 
 // Lost Souls () --------------------------------------------------------------
@@ -126,55 +129,44 @@ static size_t ran_index(gsl_rng* const rng, size_t const n) {
 
 // Vector Math (bead) ---------------------------------------------------------
 
-static struct bead bead_uwrap(struct napkin const* const napkin,
+// Minimal norm squared from origin.
+static double bead_norm2(struct napkin const* const napkin,
     struct bead const r) {
-  struct bead s;
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    s.d[idim] = fp_uwrap(r.d[idim], napkin->L);
-
-  return s;
-}
-
-static struct bead bead_wrap(struct napkin const* const napkin,
-    struct bead const r) {
-  struct bead s;
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    s.d[idim] = fp_wrap(r.d[idim], napkin->L);
-
-  return s;
-}
-
-// TODO This only takes the closest periodic image into account.
-static struct bead bead_sub(struct napkin const* const napkin,
-    struct bead const r0, struct bead const r1) {
-  struct bead r;
-
-  for (size_t idim = 0; idim < NDIM; ++idim)
-    r.d[idim] = r1.d[idim] - r0.d[idim];
-
-  return bead_wrap(napkin, r);
-}
-
-static double bead_norm2(struct bead const r) {
   double s = 0.0;
 
   for (size_t idim = 0; idim < NDIM; ++idim)
-    s += gsl_pow_2(r.d[idim]);
+    s += gsl_pow_2(fp_wrap(r.d[idim], napkin->L));
 
   return s;
 }
 
-static double bead_norm(struct bead const r) {
-  return sqrt(bead_norm2(r));
+// Minimal norm from origin.
+static double bead_norm(struct napkin const* const napkin,
+    struct bead const r) {
+  return sqrt(bead_norm2(napkin, r));
+}
+
+// Minimal distance squared between two points.
+static double bead_dist2(struct napkin const* const napkin,
+    struct bead const r0, struct bead const r1) {
+  double s = 0.0;
+
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    s += gsl_pow_2(fp_wrap(r1.d[idim] - r0.d[idim], napkin->L));
+
+  return s;
+}
+
+// Minimal distance between two points.
+static double bead_dist(struct napkin const* const napkin,
+    struct bead const r0, struct bead const r1) {
+  return sqrt(bead_dist2(napkin, r0, r1));
 }
 
 // Mass Assignment (mass) -----------------------------------------------------
 
 // Equal mass for every particle.
-static void mass_const(struct napkin* const napkin,
-    double const m) {
+static void mass_const(struct napkin* const napkin, double const m) {
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
     napkin->R[ipoly].m = m;
 }
@@ -284,7 +276,8 @@ static void conf_circlatt(struct napkin* const napkin) {
         double const y = sin(M_2PI * (t + phi / 2.0)) / 2.0;
 
         size_div_t const z = size_div(i, n);
-        napkin->R[ipoly].r[ibead].d[idim] = ((double) z.rem + (y + 1.0) / 2.0) * v;
+        napkin->R[ipoly].r[ibead].d[idim] =
+          ((double) z.rem + (y + 1.0) / 2.0) * v;
         i = z.quot;
       }
     }
@@ -307,20 +300,23 @@ static double another_surface(double const a, double const r) {
 }
 
 static void move_accept_ss(struct napkin* const napkin) {
-  ++napkin->params.ss.accepted;
+  ++napkin->params.ssm.accepted;
 }
 
 static void move_reject_ss(struct napkin* const napkin) {
-  napkin->R[napkin->history.ss.ipoly].r[napkin->history.ss.ibead] =
-    napkin->history.ss.r;
+  size_t const ipoly = napkin->history.ssm.ipoly;
+  size_t const ibead = napkin->history.ssm.ibead;
 
-  ++napkin->params.ss.rejected;
+  for (size_t idim = 0; idim < NDIM; ++idim)
+    napkin->R[ipoly].r[ibead].d[idim] = napkin->history.ssm.r.d[idim];
+
+  ++napkin->params.ssm.rejected;
 }
 
 static void move_adjust_ss(struct napkin* const napkin) {
-  napkin->params.ss.dx = napkin->params.ss.dx *
-    surface((double) napkin->params.ss.accepted,
-        (double) napkin->params.ss.rejected);
+  napkin->params.ssm.dx = napkin->params.ssm.dx *
+    surface((double) napkin->params.ssm.accepted,
+        (double) napkin->params.ssm.rejected);
 }
 
 static void move_ss(struct napkin* const napkin,
@@ -329,15 +325,17 @@ static void move_ss(struct napkin* const napkin,
   napkin->reject = move_reject_ss;
   napkin->adjust = move_adjust_ss;
 
-  napkin->history.ss.ipoly = ipoly;
-  napkin->history.ss.ibead = ibead;
-  napkin->history.ss.r = napkin->R[ipoly].r[ibead];
+  napkin->history.ssm.ipoly = ipoly;
+  napkin->history.ssm.ibead = ibead;
 
-  for (size_t idim = 0; idim < NDIM; ++idim)
+  for (size_t idim = 0; idim < NDIM; ++idim) {
+    napkin->history.ssm.r.d[idim] = napkin->R[ipoly].r[ibead].d[idim];
+
     napkin->R[ipoly].r[ibead].d[idim] = fp_uwrap(
         napkin->R[ipoly].r[ibead].d[idim] +
-        napkin->params.ss.dx * gsl_ran_flat(napkin->rng, -1.0, 1.0),
+        napkin->params.ssm.dx * gsl_ran_flat(napkin->rng, -1.0, 1.0),
         napkin->L);
+  }
 }
 
 static void move_accept_comd(struct napkin* const napkin) {
@@ -345,7 +343,12 @@ static void move_accept_comd(struct napkin* const napkin) {
 }
 
 static void move_reject_comd(struct napkin* const napkin) {
-  napkin->R[napkin->history.comd.ipoly] = napkin->history.comd.R;
+  size_t const ipoly = napkin->history.comd.ipoly;
+
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+    for (size_t idim = 0; idim < NDIM; ++idim)
+      napkin->R[ipoly].r[ibead].d[idim] =
+        napkin->history.comd.R.r[ibead].d[idim];
 
   ++napkin->params.comd.rejected;
 }
@@ -363,15 +366,19 @@ static void move_comd(struct napkin* const napkin,
   napkin->adjust = move_adjust_comd;
 
   napkin->history.comd.ipoly = ipoly;
-  napkin->history.comd.R = napkin->R[ipoly];
 
   for (size_t idim = 0; idim < NDIM; ++idim) {
-    double const x = napkin->params.comd.dx * gsl_ran_flat(napkin->rng, -1.0, 1.0);
+    double const x = napkin->params.comd.dx *
+      gsl_ran_flat(napkin->rng, -1.0, 1.0);
 
-    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
+      napkin->history.comd.R.r[ibead].d[idim] =
+        napkin->R[ipoly].r[ibead].d[idim];
+
       napkin->R[ipoly].r[ibead].d[idim] = fp_uwrap(
           napkin->R[ipoly].r[ibead].d[idim] + x,
           napkin->L);
+    }
   }
 }
 
@@ -406,13 +413,13 @@ static double K_polybead_bw(struct napkin const* const napkin,
     if (jpoly == SIZE_MAX)
       return 0.0;
     else
-      return bead_norm2(bead_sub(napkin, napkin->R[ipoly].r[ibead],
-            napkin->R[jpoly].r[jbead]));
+      return bead_dist2(napkin,
+          napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[jbead]);
   } else {
     size_t const jbead = ibead - 1;
 
-    return bead_norm2(bead_sub(napkin, napkin->R[ipoly].r[ibead],
-          napkin->R[ipoly].r[jbead]));
+    return bead_dist2(napkin,
+        napkin->R[ipoly].r[ibead], napkin->R[ipoly].r[jbead]);
   }
 }
 
@@ -425,13 +432,13 @@ static double K_polybead_fw(struct napkin const* const napkin,
     if (jpoly == SIZE_MAX)
       return 0.0;
     else
-      return bead_norm2(bead_sub(napkin, napkin->R[ipoly].r[ibead],
-            napkin->R[jpoly].r[jbead]));
+      return bead_dist2(napkin,
+          napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[jbead]);
   } else {
     size_t const jbead = ibead + 1;
 
-    return bead_norm2(bead_sub(napkin, napkin->R[ipoly].r[ibead],
-          napkin->R[ipoly].r[jbead]));
+    return bead_dist2(napkin,
+        napkin->R[ipoly].r[ibead], napkin->R[ipoly].r[jbead]);
   }
 }
 
@@ -466,8 +473,8 @@ static double Vint_bead(struct napkin const* const napkin,
 
   for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
-      V += napkin->Vint(napkin, bead_sub(napkin, napkin->R[ipoly].r[ibead],
-            napkin->R[jpoly].r[ibead]));
+      V += napkin->Vint(napkin,
+          napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[ibead]);
 
   return V;
 }
@@ -481,15 +488,15 @@ static double Vend_bead(struct napkin const* const napkin,
       if (napkin->R[ipoly].from != SIZE_MAX)
         for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
           if (napkin->R[jpoly].from != SIZE_MAX)
-            V += napkin->Vend(napkin, bead_sub(napkin,
-                  napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[ibead]));
+            V += napkin->Vend(napkin,
+                  napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[ibead]);
   } else if (ibead == NBEAD - 1)
     for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly)
       if (napkin->R[ipoly].to != SIZE_MAX)
         for (size_t jpoly = ipoly + 1; jpoly < NPOLY; ++jpoly)
           if (napkin->R[jpoly].to != SIZE_MAX)
-            V += napkin->Vend(napkin, bead_sub(napkin,
-                  napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[ibead]));
+            V += napkin->Vend(napkin,
+                  napkin->R[ipoly].r[ibead], napkin->R[jpoly].r[ibead]);
 
   return V;
 }
@@ -671,7 +678,7 @@ static void disp_drift(struct napkin const* const napkin,
     FILE* const fp) {
   (void) fprintf(fp, "%zu %f %f\n",
       napkin->i.therm + napkin->i.prod,
-      napkin->params.ss.dx, napkin->params.comd.dx);
+      napkin->params.ssm.dx, napkin->params.comd.dx);
 }
 
 // Saving into Data Files (save)
@@ -724,10 +731,14 @@ static void save_potential(struct napkin const* const napkin) {
 
   double const v = napkin->L / NSUBDIV;
 
+  double* const d = malloc(NDIM * sizeof *d);
+  if (d == NULL)
+    err_abort(malloc);
+
+  struct bead r = {.d = d};
+
   for (size_t ipt = 0; ipt < size_pow(NSUBDIV + 1, NDIM); ++ipt) {
     size_t i = ipt;
-
-    struct bead r;
 
     for (size_t idim = 0; idim < NDIM; ++idim) {
       size_div_t const z = size_div(i, NSUBDIV + 1);
@@ -742,6 +753,8 @@ static void save_potential(struct napkin const* const napkin) {
     (void) fprintf(fp, "%f\n", napkin->Vext(napkin, r));
   }
 
+  free(d);
+
   if (fclose(fp) == EOF)
     err_abort(fclose);
 }
@@ -754,7 +767,8 @@ static void status_line(struct napkin const* const napkin) {
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n",
       napkin->i.therm, napkin->i.prod, napkin->n.therm, napkin->n.prod,
-      100 * (napkin->i.therm + napkin->i.prod) / (napkin->n.therm + napkin->n.prod),
+      100 *
+      (napkin->i.therm + napkin->i.prod) / (napkin->n.therm + napkin->n.prod),
       // Correlations!
       sum.mean, sum.sem * NBEAD);
 }
@@ -765,13 +779,12 @@ static void status_file(struct napkin const* const napkin) {
 
 // More Crap () ---------------------------------------------------------------
 
-static double lj612b(__attribute__ ((__unused__)) // Not for long...
-    struct napkin const* const napkin,
-    struct bead const r) {
+static double lj612b(struct napkin const* const napkin,
+    struct bead const r0, struct bead const r1) {
   double const epsilon = 1.0;
   double const sigma = 1.0;
 
-  double const sigmar2 = gsl_pow_2(sigma) / bead_norm2(r);
+  double const sigmar2 = gsl_pow_2(sigma) / bead_dist2(napkin, r0, r1);
 
   return 4.0 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
 }
@@ -781,31 +794,67 @@ static double harmb(struct napkin const* const napkin,
   double const m = 1.0;
   double const omega = 1.0;
 
-  return m * gsl_pow_2(omega) * bead_norm2(bead_wrap(napkin, r)) / 2.0;
+  return m * gsl_pow_2(omega) * bead_norm2(napkin, r) / 2.0;
 }
 
 static double zerob(__attribute__ ((__unused__))
     struct napkin const* const napkin,
-    __attribute__ ((__unused__)) struct bead const r) {
+    __attribute__ ((__unused__)) struct bead const r0,
+    __attribute__ ((__unused__)) struct bead const r1) {
   return 0.0;
 }
 
 static void not_main(void) {
   err_reset();
 
-  struct napkin nk;
-  struct napkin* const napkin = &nk;
+  struct napkin* const napkin = malloc(sizeof *napkin);
+  if (napkin == NULL)
+    err_abort(malloc);
+
+  gsl_rng_type const* const t = gsl_rng_env_setup();
+  napkin->rng = gsl_rng_alloc(t);
+  if (napkin->rng == NULL)
+    err_abort(gsl_rng_alloc);
+
+  napkin->R = malloc(NPOLY * sizeof *napkin->R);
+  if (napkin->R == NULL)
+    err_abort(malloc);
+
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    napkin->R[ipoly].r = malloc(NBEAD * sizeof *napkin->R[ipoly].r);
+    if (napkin->R[ipoly].r == NULL)
+      err_abort(malloc);
+
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
+      napkin->R[ipoly].r[ibead].d =
+        malloc(NDIM * sizeof *napkin->R[ipoly].r[ibead].d);
+      if (napkin->R[ipoly].r[ibead].d == NULL)
+        err_abort(malloc);
+    }
+  }
+
+  napkin->history.ssm.r.d = malloc(NDIM * sizeof *napkin->history.ssm.r.d);
+  if (napkin->history.ssm.r.d == NULL)
+    err_abort(malloc);
+
+  napkin->history.comd.R.r = malloc(NBEAD * sizeof *napkin->history.comd.R.r);
+  if (napkin->history.comd.R.r == NULL)
+    err_abort(malloc);
+
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead) {
+    napkin->history.comd.R.r[ibead].d =
+      malloc(NDIM * sizeof *napkin->history.comd.R.r[ibead].d);
+    if (napkin->history.comd.R.r[ibead].d == NULL)
+      err_abort(malloc);
+  }
 
   int const sigs[] = {SIGUSR1, SIGUSR2};
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  gsl_rng_type const* const t = gsl_rng_env_setup();
-  napkin->rng = gsl_rng_alloc(t);
-
-  napkin->params.ss.accepted = 0;
-  napkin->params.ss.rejected = 0;
-  napkin->params.ss.dx = 1;
+  napkin->params.ssm.accepted = 0;
+  napkin->params.ssm.rejected = 0;
+  napkin->params.ssm.dx = 1;
 
   napkin->params.comd.accepted = 0;
   napkin->params.comd.rejected = 0;
@@ -850,14 +899,6 @@ static void not_main(void) {
   if (tdefp == NULL)
     err_abort(fopen);
 
-  // Just to prevent empty data files...
-  disp_drift(napkin, driftfp);
-  (void) fflush(driftfp);
-  (void) fprintf(tdefp, "%zu %f %f %f\n", (size_t) 0, E, E, 0.0);
-  (void) fflush(tdefp);
-
-  static double (* const workers[])(struct napkin*) = {work_ss, work_comd};
-
   napkin->n.therm = NTSTEP;
   napkin->n.prod = NPSTEP;
   napkin->n.thermrec = NTRSTEP;
@@ -867,6 +908,14 @@ static void not_main(void) {
   napkin->i.prod = 0;
   napkin->i.thermrec = 0;
   napkin->i.prodrec = 0;
+
+  // Just to prevent empty data files...
+  disp_drift(napkin, driftfp);
+  (void) fflush(driftfp);
+  (void) fprintf(tdefp, "%zu %f %f %f\n", (size_t) 0, E, E, 0.0);
+  (void) fflush(tdefp);
+
+  static double (* const workers[])(struct napkin*) = {work_ss, work_comd};
 
   for (size_t istep = 0; istep < napkin->n.therm + napkin->n.prod; ++istep) {
     choose(napkin,
@@ -927,7 +976,25 @@ static void not_main(void) {
   status_line(napkin);
   status_file(napkin);
 
+  for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+    free(napkin->history.comd.R.r[ibead].d);
+
+  free(napkin->history.comd.R.r);
+
+  free(napkin->history.ssm.r.d);
+
+  for (size_t ipoly = 0; ipoly < NPOLY; ++ipoly) {
+    for (size_t ibead = 0; ibead < NBEAD; ++ibead)
+      free(napkin->R[ipoly].r[ibead].d);
+
+    free(napkin->R[ipoly].r);
+  }
+
+  free(napkin->R);
+
   gsl_rng_free(napkin->rng);
+
+  free(napkin);
 }
 
 // Main and Procrastination () ------------------------------------------------
@@ -940,11 +1007,11 @@ static void not_main(void) {
 // TODO Make periodicity conditional (half done).
 // TODO Consider producing a histogram (half done).
 // TODO Fix V/K scaling and offsets (done).
-// TODO Abstract generic calculations for qho and He-4.
-// TODO PIGS time!
+// TODO Abstract generic calculations for qho and He-4 (half done).
 // TODO Figure out the correlation length for `sem` (half done).
 // TODO Find home for lost souls (half done).
-// TODO Consider different masses for different polymers.
+// TODO Consider different masses for different polymers (half done).
+// TODO PIGS time!
 
 int main(void) {
   not_main();
