@@ -10,6 +10,11 @@
 __attribute__ ((__const__))
 double fp_identity(double);
 
+// The statement `x = fp_constant(x, y)` does not do anything.
+// This is analogous to `size_constant`.
+__attribute__ ((__const__))
+double fp_constant(double, double);
+
 // The call `fp_zero(x)` returns `0`.
 // This is analogous to `size_zero`.
 __attribute__ ((__const__))

@@ -6,6 +6,11 @@ double fp_identity(double const x) {
   return x;
 }
 
+double fp_constant(double const x,
+    __attribute__ ((__unused__)) double const y) {
+  return x;
+}
+
 double fp_zero(__attribute__ ((__unused__)) double const x) {
   return 0.0;
 }

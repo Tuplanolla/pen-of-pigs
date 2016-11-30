@@ -66,9 +66,10 @@ struct napkin {
   struct memb nmemb;
   struct step nstep;
   struct step istep;
+  bool periodic;
+  double L; // Lattice constant.
   double hbar; // Reduced Planck's constant.
   double kB; // Boltzmann's constant.
-  double L; // Lattice constant.
   double beta; // Inverse temperature sometimes.
   double tau; // Imaginary time step maybe.
   double (* Vint)(struct napkin const*, struct bead, struct bead); // Potential between beads.
@@ -164,8 +165,11 @@ static double bead_norm2(struct napkin const* const napkin,
     struct bead const r) {
   double s = 0.0;
 
+  double (* const f)(double, double) = napkin->periodic ?
+    fp_wrap : fp_constant;
+
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim)
-    s += gsl_pow_2(fp_wrap(r.d[idim], napkin->L));
+    s += gsl_pow_2(f(r.d[idim], napkin->L));
 
   return s;
 }
@@ -181,8 +185,11 @@ static double bead_dist2(struct napkin const* const napkin,
     struct bead const r0, struct bead const r1) {
   double s = 0.0;
 
+  double (* const f)(double, double) = napkin->periodic ?
+    fp_wrap : fp_constant;
+
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim)
-    s += gsl_pow_2(fp_wrap(r1.d[idim] - r0.d[idim], napkin->L));
+    s += gsl_pow_2(f(r1.d[idim] - r0.d[idim], napkin->L));
 
   return s;
 }
@@ -358,10 +365,13 @@ static void move_ss(struct napkin* const napkin,
   napkin->hist.ssm.ipoly = ipoly;
   napkin->hist.ssm.ibead = ibead;
 
+  double (* const f)(double, double) = napkin->periodic ?
+    fp_uwrap : fp_constant;
+
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim) {
     napkin->hist.ssm.r.d[idim] = napkin->R[ipoly].r[ibead].d[idim];
 
-    napkin->R[ipoly].r[ibead].d[idim] = fp_uwrap(
+    napkin->R[ipoly].r[ibead].d[idim] = f(
         napkin->R[ipoly].r[ibead].d[idim] +
         napkin->params.ssm.dx * gsl_ran_flat(napkin->rng, -1.0, 1.0),
         napkin->L);
@@ -397,6 +407,9 @@ static void move_comd(struct napkin* const napkin,
 
   napkin->hist.comd.ipoly = ipoly;
 
+  double (* const f)(double, double) = napkin->periodic ?
+    fp_uwrap : fp_constant;
+
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim) {
     double const x = napkin->params.comd.dx *
       gsl_ran_flat(napkin->rng, -1.0, 1.0);
@@ -405,7 +418,7 @@ static void move_comd(struct napkin* const napkin,
       napkin->hist.comd.R.r[ibead].d[idim] =
         napkin->R[ipoly].r[ibead].d[idim];
 
-      napkin->R[ipoly].r[ibead].d[idim] = fp_uwrap(
+      napkin->R[ipoly].r[ibead].d[idim] = f(
           napkin->R[ipoly].r[ibead].d[idim] + x,
           napkin->L);
     }
@@ -916,12 +929,12 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
 // Static Constants (N) -------------------------------------------------------
 
 #define NPOLY ((size_t) 1)
-#define NBEAD ((size_t) 64)
+#define NBEAD ((size_t) 32)
 #define NDIM ((size_t) 1)
 #define NSUBDIV ((size_t) 16)
 
-#define NTHRM ((size_t) 1 << 14)
-#define NPROD ((size_t) 1 << 18)
+#define NTHRM ((size_t) 1 << 16)
+#define NPROD ((size_t) 1 << 20)
 #define NTHRMREC ((size_t) 1 << 4)
 #define NPRODREC ((size_t) 1 << 8)
 
@@ -937,10 +950,11 @@ static void not_main(void) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
+  napkin->periodic = false;
+  napkin->L = 10.0;
   napkin->hbar = 1.0;
   napkin->kB = 1.0;
-  napkin->L = 10.0;
-  double const T = 0.1;
+  double const T = 20;
   napkin->beta = 1.0 / (napkin->kB * T);
   napkin->tau = napkin->beta / napkin->nmemb.bead;
 
