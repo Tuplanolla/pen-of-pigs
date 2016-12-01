@@ -12,7 +12,7 @@ endif
 
 ifeq ($(CC), gcc)
 ifeq ($(CONFIG), debug)
-flags=-DDEBUG -O0 -g `cat gcc-$$(./gcc-version | tr . _)-release` \
+flags=-DDEBUG -Og -g `cat gcc-$$(./gcc-version | tr . _)-release` \
 	-Wno-error -Wno-fatal-errors -Wno-system-headers \
 	-Wno-c++-compat -Wno-declaration-after-statement \
 	-Wno-traditional -Wno-traditional-conversion \
