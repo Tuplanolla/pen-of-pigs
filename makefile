@@ -33,6 +33,7 @@ run: build
 	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho
 
 check: build
+	cppcheck -I/usr/include --enable=all qho.c
 	valgrind --leak-check=full --tool=memcheck ./qho
 
 build: qho

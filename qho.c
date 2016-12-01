@@ -23,13 +23,12 @@ struct par {
   double dx;
 };
 
-struct estacc {
-  size_t N; // Sample accumulator.
-  double M1; // First moment accumulator.
-  double M2; // Second moment accumulator.
-};
-
-struct estsum {
+struct est {
+  struct {
+    size_t N; // Samples.
+    double M1; // First moment.
+    double M2; // Second moment.
+  } acc; // Accumulator.
   double mean; // Mean.
   double var; // Variance.
   double sd; // Standard deviation.
@@ -43,17 +42,6 @@ struct step {
   size_t prodrec; // Recording steps during production.
 };
 
-struct bead {
-  double* d;
-};
-
-struct poly {
-  double m;
-  size_t from;
-  size_t to;
-  struct bead* r;
-};
-
 struct memb {
   size_t poly;
   size_t bead;
@@ -61,50 +49,57 @@ struct memb {
   size_t subdiv;
 };
 
+struct bead {
+  double* d;
+};
+
+struct poly {
+  struct bead* r;
+  size_t from;
+  size_t to;
+  double m;
+};
+
 struct napkin {
-  gsl_rng* rng; // State of the random number generator.
   struct memb nmemb;
   struct step nstep;
   struct step istep;
+  gsl_rng* rng; // State of the random number generator.
+  struct poly* R;
+  struct est* tde; // Thermodynamic energy estimator.
   bool periodic;
   double L; // Lattice constant.
-  double hbar; // Reduced Planck's constant.
-  double kB; // Boltzmann's constant.
   double beta; // Inverse temperature sometimes.
   double tau; // Imaginary time step maybe.
   double (* Vint)(struct napkin const*, struct bead, struct bead); // Potential between beads.
   double (* Vend)(struct napkin const*, struct bead, struct bead); // Extra potential between open ends.
   double (* Vext)(struct napkin const*, struct bead); // External potential.
-  struct {
-    struct {
-      size_t accepted;
-      size_t rejected;
-      double dx;
-    } ssm; // Single slice move.
-    struct {
-      size_t accepted;
-      size_t rejected;
-      double dx;
-    } comd; // Center of mass displacement.
-  } params; // Optimization parameters of each move.
+  void (* accept)(struct napkin*);
+  void (* reject)(struct napkin*);
+  void (* adjust)(struct napkin*);
   struct {
     struct {
       size_t ipoly;
       size_t ibead;
       struct bead r;
-    } ssm;
+    } ssm; // Single slice move.
     struct {
       size_t ipoly;
       struct poly R;
-    } comd;
+    } comd; // Center of mass displacement.
   } hist; // Undo history for the latest moves.
-  void (* accept)(struct napkin*);
-  void (* reject)(struct napkin*);
-  void (* adjust)(struct napkin*);
   struct {
-    struct estacc tde; // Thermodynamic energy.
-  } acc; // Estimator accumulators.
-  struct poly* R;
+    struct {
+      size_t accepted;
+      size_t rejected;
+      double dx;
+    } ssm;
+    struct {
+      size_t accepted;
+      size_t rejected;
+      double dx;
+    } comd;
+  } params; // Optimization parameters for each move.
 };
 
 // Lost Souls () --------------------------------------------------------------
@@ -115,47 +110,49 @@ static size_t ran_index(gsl_rng* const rng, size_t const n) {
 
 // Estimator Statistics (est) -------------------------------------------------
 
-static struct estacc est_empty(void) {
-  struct estacc acc;
-
-  acc.N = 0;
-  acc.M1 = 0.0;
-  acc.M2 = 0.0;
-
-  return acc;
+static void est_free(struct est* const acc) {
+  free(acc);
 }
 
-static void est_accum(struct estacc* const acc, double const x) {
-  ++acc->N;
-  double const dx = x - acc->M1;
-  acc->M1 += dx / (double) acc->N;
-  acc->M2 += dx * (x - acc->M1);
+static struct est* est_alloc(void) {
+  struct est* const est = malloc(sizeof *est);
+  if (est == NULL)
+    return NULL;
+
+  est->acc.N = 0;
+  est->acc.M1 = 0.0;
+  est->acc.M2 = 0.0;
+
+  return est;
 }
 
-static struct estsum est_summ(struct estacc const* const acc) {
-  struct estsum sum;
+static void est_accum(struct est* const est, double const x) {
+  ++est->acc.N;
+  double const dx = x - est->acc.M1;
+  est->acc.M1 += dx / (double) est->acc.N;
+  est->acc.M2 += dx * (x - est->acc.M1);
+}
 
-  switch (acc->N) {
+static void est_calc(struct est* const est) {
+  switch (est->acc.N) {
     case 0:
-      sum.mean = NAN;
-      sum.var = NAN;
-      sum.sd = NAN;
-      sum.sem = NAN;
+      est->mean = NAN;
+      est->var = NAN;
+      est->sd = NAN;
+      est->sem = NAN;
       break;
     case 1:
-      sum.mean = acc->M1;
-      sum.var = 0.0;
-      sum.sd = 0.0;
-      sum.sem = 0.0;
+      est->mean = est->acc.M1;
+      est->var = 0.0;
+      est->sd = 0.0;
+      est->sem = 0.0;
       break;
     default:
-      sum.mean = acc->M1;
-      sum.var = acc->M2 / (double) (acc->N - 1);
-      sum.sd = sqrt(sum.var);
-      sum.sem = sum.sd / sqrt((double) acc->N);
+      est->mean = est->acc.M1;
+      est->var = est->acc.M2 / (double) (est->acc.N - 1);
+      est->sd = sqrt(est->var);
+      est->sem = est->sd / sqrt((double) est->acc.N);
   }
-
-  return sum;
 }
 
 // Vector Math (bead) ---------------------------------------------------------
@@ -450,7 +447,7 @@ static void move_bisect(
 static double K_polybead_bw(struct napkin const* const napkin,
     size_t const ipoly, size_t const ibead) {
   double const M = napkin->R[ipoly].m /
-    (2.0 * napkin->hbar * gsl_pow_2(napkin->tau));
+    (2.0 * gsl_pow_2(napkin->tau));
 
   if (ibead == 0) {
     size_t const jpoly = napkin->R[ipoly].from;
@@ -474,7 +471,7 @@ static double K_polybead_bw(struct napkin const* const napkin,
 static double K_polybead_fw(struct napkin const* const napkin,
     size_t const ipoly, size_t const ibead) {
   double const M = napkin->R[ipoly].m /
-    (2.0 * napkin->hbar * gsl_pow_2(napkin->tau));
+    (2.0 * gsl_pow_2(napkin->tau));
 
   if (ibead == napkin->nmemb.bead - 1) {
     size_t const jpoly = napkin->R[ipoly].to;
@@ -672,11 +669,12 @@ static void disp_poly(struct napkin const* const napkin,
 
 static void disp_tde(struct napkin const* const napkin,
     FILE* const fp) {
-  struct estsum const sum = est_summ(&napkin->acc.tde);
+  est_calc(napkin->tde);
 
   (void) fprintf(fp, "%zu %f %f %f\n",
       // Correlations!
-      napkin->istep.prod, est_tde(napkin), sum.mean, sum.sem * napkin->nmemb.bead);
+      napkin->istep.prod, est_tde(napkin),
+      napkin->tde->mean, napkin->tde->sem * napkin->nmemb.bead);
 }
 
 static void disp_drift(struct napkin const* const napkin,
@@ -767,7 +765,7 @@ static void save_potential(struct napkin const* const napkin) {
 // Other Crap () --------------------------------------------------------------
 
 static void status_line(struct napkin const* const napkin) {
-  struct estsum const sum = est_summ(&napkin->acc.tde);
+  est_calc(napkin->tde);
 
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n",
@@ -775,7 +773,7 @@ static void status_line(struct napkin const* const napkin) {
       100 *
       (napkin->istep.thrm + napkin->istep.prod) / (napkin->nstep.thrm + napkin->nstep.prod),
       // Correlations!
-      sum.mean, sum.sem * napkin->nmemb.bead);
+      napkin->tde->mean, napkin->tde->sem * napkin->nmemb.bead);
 }
 
 static void status_file(struct napkin const* const napkin) {
@@ -828,6 +826,8 @@ static void napkin_free(struct napkin* const napkin) {
 
     free(napkin->hist.ssm.r.d);
 
+    est_free(napkin->tde);
+
     if (napkin->R != NULL)
       for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly) {
         if (napkin->R[ipoly].r != NULL)
@@ -851,11 +851,11 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     size_t const nthrmrec, size_t const nprodrec) {
   // These assertions guarantee that adding or multiplying two steps or indices
   // never wraps around, which makes their manipulation easier.
-  dynamic_assert(npoly <= CBRT_SIZE_MAX, "too many polymers");
-  dynamic_assert(nbead <= CBRT_SIZE_MAX, "too many beads");
-  dynamic_assert(ndim <= CBRT_SIZE_MAX, "too many dimensions");
-  dynamic_assert(nthrm <= SQRT_SIZE_MAX, "too many thermalization steps");
-  dynamic_assert(nprod <= SQRT_SIZE_MAX, "too many production steps");
+  dynamic_assert(npoly <= RT_SIZE_MAX(4), "too many polymers");
+  dynamic_assert(nbead <= RT_SIZE_MAX(4), "too many beads");
+  dynamic_assert(ndim <= RT_SIZE_MAX(4), "too many dimensions");
+  dynamic_assert(nthrm <= RT_SIZE_MAX(2), "too many thermalization steps");
+  dynamic_assert(nprod <= RT_SIZE_MAX(2), "too many production steps");
   dynamic_assert(nthrmrec <= nthrm, "too many thermalization recording steps");
   dynamic_assert(nprodrec <= nprod, "too many production recording steps");
 
@@ -890,7 +890,8 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
       alloc = alloc_err;
     else
       for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly) {
-        napkin->R[ipoly].r = alloc(napkin->nmemb.bead * sizeof *napkin->R[ipoly].r);
+        napkin->R[ipoly].r =
+          alloc(napkin->nmemb.bead * sizeof *napkin->R[ipoly].r);
         if (napkin->R[ipoly].r == NULL)
           alloc = alloc_err;
         else
@@ -902,11 +903,13 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
           }
       }
 
-    napkin->hist.ssm.r.d = alloc(napkin->nmemb.dim * sizeof *napkin->hist.ssm.r.d);
+    napkin->hist.ssm.r.d =
+      alloc(napkin->nmemb.dim * sizeof *napkin->hist.ssm.r.d);
     if (napkin->hist.ssm.r.d == NULL)
       alloc = alloc_err;
 
-    napkin->hist.comd.R.r = alloc(napkin->nmemb.bead * sizeof *napkin->hist.comd.R.r);
+    napkin->hist.comd.R.r =
+      alloc(napkin->nmemb.bead * sizeof *napkin->hist.comd.R.r);
     if (napkin->hist.comd.R.r == NULL)
       alloc = alloc_err;
     else
@@ -916,6 +919,18 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
         if (napkin->hist.comd.R.r[ibead].d == NULL)
           alloc = alloc_err;
       }
+
+    napkin->tde = est_alloc();
+    if (napkin->tde == NULL)
+      alloc = alloc_err;
+
+    napkin->params.ssm.accepted = 0;
+    napkin->params.ssm.rejected = 0;
+    napkin->params.ssm.dx = 1;
+
+    napkin->params.comd.accepted = 0;
+    napkin->params.comd.rejected = 0;
+    napkin->params.comd.dx = 1;
   }
 
   if (alloc == alloc_err) {
@@ -933,8 +948,8 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
 #define NDIM ((size_t) 1)
 #define NSUBDIV ((size_t) 16)
 
-#define NTHRM ((size_t) 1 << 16)
-#define NPROD ((size_t) 1 << 20)
+#define NTHRM ((size_t) 1 << 14)
+#define NPROD ((size_t) 1 << 18)
 #define NTHRMREC ((size_t) 1 << 4)
 #define NPRODREC ((size_t) 1 << 8)
 
@@ -950,31 +965,19 @@ static void not_main(void) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  napkin->periodic = false;
+  napkin->periodic = true;
   napkin->L = 10.0;
-  napkin->hbar = 1.0;
-  napkin->kB = 1.0;
-  double const T = 20;
-  napkin->beta = 1.0 / (napkin->kB * T);
+  double const T = 0.1;
+  napkin->beta = 1.0 / T;
   napkin->tau = napkin->beta / napkin->nmemb.bead;
 
-  double const q = napkin->hbar * omega / 2.0;
+  double const q = omega / 2.0;
   double const E = napkin->nmemb.dim * q / tanh(q * napkin->beta);
   (void) printf("Expected for QHO: E = %f\n", E);
 
   napkin->Vint = lj612b;
   napkin->Vend = zerob;
   napkin->Vext = harmb;
-
-  napkin->params.ssm.accepted = 0;
-  napkin->params.ssm.rejected = 0;
-  napkin->params.ssm.dx = 1;
-
-  napkin->params.comd.accepted = 0;
-  napkin->params.comd.rejected = 0;
-  napkin->params.comd.dx = 1;
-
-  napkin->acc.tde = est_empty();
 
   conf_circlatt(napkin);
   force_close(napkin);
@@ -1028,7 +1031,7 @@ static void not_main(void) {
 
       ++napkin->istep.thrm;
     } else {
-      est_accum(&napkin->acc.tde, est_tde(napkin));
+      est_accum(napkin->tde, est_tde(napkin));
 
       if (napkin->nstep.prodrec * napkin->istep.prod > napkin->nstep.prod * napkin->istep.prodrec) {
         disp_drift(napkin, driftfp);
