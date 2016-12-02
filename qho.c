@@ -46,8 +46,8 @@ struct poly {
 };
 
 struct ensem {
-  struct memb nmemb;
-  struct step nstep;
+  struct memb Nmemb;
+  struct step Nstep;
   struct step istep;
   struct poly* R;
   bool periodic;
@@ -63,6 +63,8 @@ struct napkin {
   gsl_rng* rng;
   struct ensem* ensem;
   struct stats* tde;
+  size_t* P;
+  size_t* g;
   struct {
     struct {
       size_t accepted;
@@ -114,7 +116,7 @@ static double bead_norm2(struct ensem const* const ensem,
   double (* const f)(double, double) =
     ensem->periodic ? fp_wrap : fp_constant;
 
-  for (size_t idim = 0; idim < ensem->nmemb.dim; ++idim)
+  for (size_t idim = 0; idim < ensem->Nmemb.dim; ++idim)
     s += gsl_pow_2(f(r.d[idim], ensem->L));
 
   return s;
@@ -136,7 +138,7 @@ static double bead_dist2(struct ensem const* const ensem,
   double (* const f)(double, double) =
     ensem->periodic ? fp_wrap : fp_constant;
 
-  for (size_t idim = 0; idim < ensem->nmemb.dim; ++idim)
+  for (size_t idim = 0; idim < ensem->Nmemb.dim; ++idim)
     s += gsl_pow_2(f(r1.d[idim] - r0.d[idim], ensem->L));
 
   return s;
@@ -158,7 +160,7 @@ static double K_polybead_bw(struct ensem const* const ensem,
 
   if (ibead == 0) {
     size_t const jpoly = ensem->R[ipoly].from;
-    size_t const jbead = ensem->nmemb.bead - 1;
+    size_t const jbead = ensem->Nmemb.bead - 1;
 
     if (jpoly == SIZE_MAX)
       return 0.0;
@@ -180,7 +182,7 @@ static double K_polybead_fw(struct ensem const* const ensem,
     size_t const ipoly, size_t const ibead) {
   double const M = ensem->R[ipoly].m / (2.0 * gsl_pow_2(ensem->tau));
 
-  if (ibead == ensem->nmemb.bead - 1) {
+  if (ibead == ensem->Nmemb.bead - 1) {
     size_t const jpoly = ensem->R[ipoly].to;
     size_t const jbead = 0;
 
@@ -209,7 +211,7 @@ static double K_poly(struct ensem const* const ensem,
     size_t const ipoly) {
   double K = 0.0;
 
-  for (size_t ibead = 0; ibead < ensem->nmemb.bead; ++ibead)
+  for (size_t ibead = 0; ibead < ensem->Nmemb.bead; ++ibead)
     K += K_polybead_fw(ensem, ipoly, ibead);
 
   return K;
@@ -219,7 +221,7 @@ __attribute__ ((__nonnull__, __pure__))
 static double K_total(struct ensem const* const ensem) {
   double K = 0.0;
 
-  for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly)
+  for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly)
     K += K_poly(ensem, ipoly);
 
   return K;
@@ -230,8 +232,8 @@ static double Vint_bead(struct ensem const* const ensem,
     size_t const ibead) {
   double V = 0.0;
 
-  for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly)
-    for (size_t jpoly = ipoly + 1; jpoly < ensem->nmemb.poly; ++jpoly)
+  for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly)
+    for (size_t jpoly = ipoly + 1; jpoly < ensem->Nmemb.poly; ++jpoly)
       V += ensem->Vint(ensem,
           ensem->R[ipoly].r[ibead], ensem->R[jpoly].r[ibead]);
 
@@ -244,16 +246,16 @@ static double Vend_bead(struct ensem const* const ensem,
   double V = 0.0;
 
   if (ibead == 0) {
-    for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly)
+    for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly)
       if (ensem->R[ipoly].from == SIZE_MAX)
-        for (size_t jpoly = ipoly + 1; jpoly < ensem->nmemb.poly; ++jpoly)
+        for (size_t jpoly = ipoly + 1; jpoly < ensem->Nmemb.poly; ++jpoly)
           if (ensem->R[jpoly].from == SIZE_MAX)
             V += ensem->Vend(ensem,
                 ensem->R[ipoly].r[ibead], ensem->R[jpoly].r[ibead]);
-  } else if (ibead == ensem->nmemb.bead - 1)
-    for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly)
+  } else if (ibead == ensem->Nmemb.bead - 1)
+    for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly)
       if (ensem->R[ipoly].to == SIZE_MAX)
-        for (size_t jpoly = ipoly + 1; jpoly < ensem->nmemb.poly; ++jpoly)
+        for (size_t jpoly = ipoly + 1; jpoly < ensem->Nmemb.poly; ++jpoly)
           if (ensem->R[jpoly].to == SIZE_MAX)
             V += ensem->Vend(ensem,
                 ensem->R[ipoly].r[ibead], ensem->R[jpoly].r[ibead]);
@@ -272,7 +274,7 @@ static double V_bead(struct ensem const* const ensem,
     size_t const ibead) {
   double V = Vint_bead(ensem, ibead) + Vend_bead(ensem, ibead);
 
-  for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly)
+  for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly)
     V += Vext_polybead(ensem, ipoly, ibead);
 
   return V;
@@ -282,7 +284,7 @@ __attribute__ ((__nonnull__, __pure__))
 static double V_total(struct ensem const* const ensem) {
   double V = 0.0;
 
-  for (size_t ibead = 0; ibead < ensem->nmemb.bead; ++ibead)
+  for (size_t ibead = 0; ibead < ensem->Nmemb.bead; ++ibead)
     V += V_bead(ensem, ibead);
 
   return V;
@@ -296,11 +298,11 @@ static double V_total(struct ensem const* const ensem) {
 __attribute__ ((__nonnull__, __pure__))
 static double est_tde(struct ensem const* const ensem) {
   double const E =
-    (double) (ensem->nmemb.dim * ensem->nmemb.poly) / (2.0 * ensem->tau);
+    (double) (ensem->Nmemb.dim * ensem->Nmemb.poly) / (2.0 * ensem->tau);
   double const K =
-    K_total(ensem) / (double) (ensem->nmemb.poly * ensem->nmemb.bead);
+    K_total(ensem) / (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
   double const V =
-    V_total(ensem) / (double) (ensem->nmemb.poly * ensem->nmemb.bead);
+    V_total(ensem) / (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
 
   return E - K + V;
 }
@@ -310,7 +312,7 @@ static double est_tde(struct ensem const* const ensem) {
 // Equal mass for every particle.
 __attribute__ ((__nonnull__))
 static void Rm_const(struct napkin* const napkin, double const m) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
     napkin->ensem->R[ipoly].m = m;
 }
 
@@ -319,7 +321,7 @@ static void Rm_const(struct napkin* const napkin, double const m) {
 // Close the current configuration.
 __attribute__ ((__nonnull__))
 static void Rend_close(struct napkin* const napkin) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly) {
     napkin->ensem->R[ipoly].from = ipoly;
     napkin->ensem->R[ipoly].to = ipoly;
   }
@@ -328,7 +330,7 @@ static void Rend_close(struct napkin* const napkin) {
 // Open the current configuration.
 __attribute__ ((__nonnull__))
 static void Rend_open(struct napkin* const napkin) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly) {
     napkin->ensem->R[ipoly].from = SIZE_MAX;
     napkin->ensem->R[ipoly].to = SIZE_MAX;
   }
@@ -337,9 +339,9 @@ static void Rend_open(struct napkin* const napkin) {
 // Cycle the current configuration.
 __attribute__ ((__nonnull__))
 static void Rend_cycle(struct napkin* const napkin) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly) {
-    napkin->ensem->R[ipoly].from = size_uwrap_dec(ipoly, napkin->ensem->nmemb.poly);
-    napkin->ensem->R[ipoly].to = size_uwrap_inc(ipoly, napkin->ensem->nmemb.poly);
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly) {
+    napkin->ensem->R[ipoly].from = size_uwrap_dec(ipoly, napkin->ensem->Nmemb.poly);
+    napkin->ensem->R[ipoly].to = size_uwrap_inc(ipoly, napkin->ensem->Nmemb.poly);
   }
 }
 
@@ -348,9 +350,9 @@ static void Rend_cycle(struct napkin* const napkin) {
 // Random initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_rand(struct napkin* const napkin) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead)
-      for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim)
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead)
+      for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
         napkin->ensem->R[ipoly].r[ibead].d[idim] =
           ran_uopen(napkin->rng, napkin->ensem->L);
 }
@@ -358,11 +360,11 @@ static void Rr_rand(struct napkin* const napkin) {
 // Random point initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_randpt(struct napkin* const napkin) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
-    for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
       double const x = ran_uopen(napkin->rng, napkin->ensem->L);
 
-      for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead)
+      for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead)
         napkin->ensem->R[ipoly].r[ibead].d[idim] = x;
     }
 }
@@ -370,14 +372,14 @@ static void Rr_randpt(struct napkin* const napkin) {
 // Random lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_randlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem->nmemb.poly, napkin->ensem->nmemb.dim);
+  size_t const n = size_cirt(napkin->ensem->Nmemb.poly, napkin->ensem->Nmemb.dim);
   double const v = napkin->ensem->L / (double) n;
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
       size_t i = ipoly;
 
-      for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
+      for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
         size_div_t const z = size_div(i, n);
 
         napkin->ensem->R[ipoly].r[ibead].d[idim] =
@@ -390,14 +392,14 @@ static void Rr_randlatt(struct napkin* const napkin) {
 // Point lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_ptlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem->nmemb.poly, napkin->ensem->nmemb.dim);
+  size_t const n = size_cirt(napkin->ensem->Nmemb.poly, napkin->ensem->Nmemb.dim);
   double const v = napkin->ensem->L / (double) n;
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
       size_t i = ipoly;
 
-      for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
+      for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
         size_div_t const z = size_div(i, n);
 
         napkin->ensem->R[ipoly].r[ibead].d[idim] = (double) z.rem * v;
@@ -410,17 +412,17 @@ static void Rr_ptlatt(struct napkin* const napkin) {
 // The equations are based on the theory of Lissajous knots.
 __attribute__ ((__nonnull__))
 static void Rr_circlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem->nmemb.poly, napkin->ensem->nmemb.dim);
+  size_t const n = size_cirt(napkin->ensem->Nmemb.poly, napkin->ensem->Nmemb.dim);
   double const v = napkin->ensem->L / (double) n;
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead) {
-      double const t = (double) ibead / (double) napkin->ensem->nmemb.bead;
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
+      double const t = (double) ibead / (double) napkin->ensem->Nmemb.bead;
 
       size_t i = ipoly;
 
-      for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
-        double const phi = (double) idim / (double) napkin->ensem->nmemb.dim;
+      for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
+        double const phi = (double) idim / (double) napkin->ensem->Nmemb.dim;
         double const y = sin(M_2PI * (t + phi / 2.0)) / 2.0;
 
         size_div_t const z = size_div(i, n);
@@ -446,7 +448,7 @@ static void move_reject_ss(struct napkin* const napkin) {
   size_t const ipoly = napkin->hist.ssm.ipoly;
   size_t const ibead = napkin->hist.ssm.ibead;
 
-  for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim)
+  for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
     napkin->ensem->R[ipoly].r[ibead].d[idim] = napkin->hist.ssm.r.d[idim];
 
   ++napkin->params.ssm.rejected;
@@ -472,7 +474,7 @@ static void move_ss(struct napkin* const napkin,
   double (* const f)(double, double) =
     napkin->ensem->periodic ? fp_uwrap : fp_constant;
 
-  for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
+  for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
     napkin->hist.ssm.r.d[idim] = napkin->ensem->R[ipoly].r[ibead].d[idim];
 
     napkin->ensem->R[ipoly].r[ibead].d[idim] =
@@ -490,8 +492,8 @@ __attribute__ ((__nonnull__))
 static void move_reject_comd(struct napkin* const napkin) {
   size_t const ipoly = napkin->hist.comd.ipoly;
 
-  for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead)
-    for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim)
+  for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead)
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
       napkin->ensem->R[ipoly].r[ibead].d[idim] =
         napkin->hist.comd.R.r[ibead].d[idim];
 
@@ -517,11 +519,11 @@ static void move_comd(struct napkin* const napkin,
   double (* const f)(double, double) =
     napkin->ensem->periodic ? fp_uwrap : fp_constant;
 
-  for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
+  for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
     double const x = napkin->params.comd.dx *
       ran_open(napkin->rng, 1.0);
 
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead) {
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
       napkin->hist.comd.R.r[ibead].d[idim] =
         napkin->ensem->R[ipoly].r[ibead].d[idim];
 
@@ -555,8 +557,8 @@ static void move_bisect(
 
 __attribute__ ((__nonnull__))
 static double work_ss(struct napkin* const napkin) {
-  size_t const ipoly = ran_index(napkin->rng, napkin->ensem->nmemb.poly);
-  size_t const ibead = ran_index(napkin->rng, napkin->ensem->nmemb.bead);
+  size_t const ipoly = ran_index(napkin->rng, napkin->ensem->Nmemb.poly);
+  size_t const ibead = ran_index(napkin->rng, napkin->ensem->Nmemb.bead);
 
   double const V0 =
     Vint_bead(napkin->ensem, ibead) + Vend_bead(napkin->ensem, ibead) +
@@ -575,7 +577,7 @@ static double work_ss(struct napkin* const napkin) {
 
 __attribute__ ((__nonnull__))
 static double work_comd(struct napkin* const napkin) {
-  size_t const ipoly = ran_index(napkin->rng, napkin->ensem->nmemb.poly);
+  size_t const ipoly = ran_index(napkin->rng, napkin->ensem->Nmemb.poly);
 
   double const V0 = V_total(napkin->ensem);
 
@@ -607,7 +609,7 @@ static void disp_bead(struct napkin const* const napkin,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   (void) fprintf(fp, "%zu", iindex);
 
-  for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim)
+  for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
     (void) fprintf(fp, " %f", napkin->ensem->R[ipoly].r[ibead].d[idim]);
 
   (void) fprintf(fp, "\n");
@@ -616,12 +618,12 @@ static void disp_bead(struct napkin const* const napkin,
 __attribute__ ((__nonnull__))
 static void disp_poly(struct napkin const* const napkin,
     FILE* const fp) {
-  for (size_t ipoly = 0; ipoly < napkin->ensem->nmemb.poly; ++ipoly) {
-    for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead)
+  for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly) {
+    for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead)
       disp_bead(napkin, fp, ibead, ipoly, ibead);
 
     if (napkin->ensem->R[ipoly].to != SIZE_MAX)
-      disp_bead(napkin, fp, napkin->ensem->nmemb.bead, napkin->ensem->R[ipoly].to, 0);
+      disp_bead(napkin, fp, napkin->ensem->Nmemb.bead, napkin->ensem->R[ipoly].to, 0);
 
     (void) fprintf(fp, "\n");
   }
@@ -633,7 +635,7 @@ static void disp_tde(struct napkin const* const napkin,
   (void) fprintf(fp, "%zu %f %f %f\n",
       napkin->ensem->istep.prod, est_tde(napkin->ensem), stats_mean(napkin->tde),
       // Correlations!
-      stats_sem(napkin->tde) * (double) napkin->ensem->nmemb.bead);
+      stats_sem(napkin->tde) * (double) napkin->ensem->Nmemb.bead);
 }
 
 __attribute__ ((__nonnull__))
@@ -661,7 +663,7 @@ static void save_length(struct napkin const* const napkin) {
 __attribute__ ((__nonnull__))
 static void save_esl(struct napkin const* const napkin) {
   char str[BUFSIZ]; // Always longer than 256 and safe!
-  if (snprintf(str, BUFSIZ, "qho-ensemble-%zud.data", napkin->ensem->nmemb.dim) < 0)
+  if (snprintf(str, BUFSIZ, "qho-ensemble-%zud.data", napkin->ensem->Nmemb.dim) < 0)
     err_abort(snprintf);
 
   FILE* const fp = fopen(str, "w");
@@ -680,7 +682,7 @@ static void save_subdivisions(struct napkin const* const napkin) {
   if (fp == NULL)
     err_abort(fopen);
 
-  (void) fprintf(fp, "%zu\n", napkin->ensem->nmemb.subdiv);
+  (void) fprintf(fp, "%zu\n", napkin->ensem->Nmemb.subdiv);
 
   if (fclose(fp) == EOF)
     err_abort(fclose);
@@ -689,35 +691,79 @@ static void save_subdivisions(struct napkin const* const napkin) {
 __attribute__ ((__nonnull__))
 static void save_potential(struct napkin const* const napkin) {
   char str[BUFSIZ]; // Always longer than 256 and safe!
-  if (snprintf(str, BUFSIZ, "qho-potential-%zud.data", napkin->ensem->nmemb.dim) < 0)
+  if (snprintf(str, BUFSIZ, "qho-potential-%zud.data", napkin->ensem->Nmemb.dim) < 0)
     err_abort(snprintf);
 
   FILE* const fp = fopen(str, "w");
   if (fp == NULL)
     err_abort(fopen);
 
-  double const v = napkin->ensem->L / (double) napkin->ensem->nmemb.subdiv;
+  double const v = napkin->ensem->L / (double) napkin->ensem->Nmemb.subdiv;
 
-  double* const d = malloc(napkin->ensem->nmemb.dim * sizeof *d);
+  double* const d = malloc(napkin->ensem->Nmemb.dim * sizeof *d);
   if (d == NULL)
     err_abort(malloc);
 
   struct bead r = {.d = d};
 
-  for (size_t ipt = 0; ipt < size_pow(napkin->ensem->nmemb.subdiv + 1, napkin->ensem->nmemb.dim); ++ipt) {
-    size_t i = ipt;
+  size_t const Nbin = size_pow(napkin->ensem->Nmemb.subdiv + 1,
+      napkin->ensem->Nmemb.dim);
+  for (size_t ibin = 0; ibin < Nbin; ++ibin) {
+    size_t i = ibin;
 
-    for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim) {
-      size_div_t const z = size_div(i, napkin->ensem->nmemb.subdiv + 1);
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
+      size_div_t const z = size_div(i, napkin->ensem->Nmemb.subdiv + 1);
 
       r.d[idim] = (double) z.rem * v;
       i = z.quot;
     }
 
-    for (size_t idim = 0; idim < napkin->ensem->nmemb.dim; ++idim)
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
       (void) fprintf(fp, "%f ", r.d[idim]);
 
     (void) fprintf(fp, "%f\n", napkin->ensem->Vext(napkin->ensem, r));
+  }
+
+  free(d);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
+__attribute__ ((__nonnull__))
+static void save_probability(struct napkin const* const napkin) {
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-probability-%zud.data", napkin->ensem->Nmemb.dim) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  double const v = napkin->ensem->L / (double) napkin->ensem->Nmemb.subdiv;
+
+  double* const d = malloc(napkin->ensem->Nmemb.dim * sizeof *d);
+  if (d == NULL)
+    err_abort(malloc);
+
+  struct bead r = {.d = d};
+
+  size_t const Nbin = size_pow(napkin->ensem->Nmemb.subdiv,
+      napkin->ensem->Nmemb.dim);
+  for (size_t ibin = 0; ibin < Nbin; ++ibin) {
+    size_t i = ibin;
+
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
+      size_div_t const z = size_div(i, napkin->ensem->Nmemb.subdiv + 1);
+
+      r.d[idim] = (double) z.rem * v;
+      i = z.quot;
+    }
+
+    for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
+      (void) fprintf(fp, "%f ", r.d[idim]);
+
+    (void) fprintf(fp, "%zu\n", napkin->P[ibin]);
   }
 
   free(d);
@@ -732,12 +778,12 @@ __attribute__ ((__nonnull__))
 static void status_line(struct napkin const* const napkin) {
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n",
-      napkin->ensem->istep.thrm, napkin->ensem->istep.prod, napkin->ensem->nstep.thrm, napkin->ensem->nstep.prod,
+      napkin->ensem->istep.thrm, napkin->ensem->istep.prod, napkin->ensem->Nstep.thrm, napkin->ensem->Nstep.prod,
       100 * (napkin->ensem->istep.thrm + napkin->ensem->istep.prod) /
-      (napkin->ensem->nstep.thrm + napkin->ensem->nstep.prod),
+      (napkin->ensem->Nstep.thrm + napkin->ensem->Nstep.prod),
       stats_mean(napkin->tde),
       // Correlations!
-      stats_sem(napkin->tde) * (double) napkin->ensem->nmemb.bead);
+      stats_sem(napkin->tde) * (double) napkin->ensem->Nmemb.bead);
 }
 
 __attribute__ ((__nonnull__))
@@ -758,9 +804,9 @@ static void* alloc_err(__attribute__ ((__unused__)) size_t const n) {
 static void ensem_free(struct ensem* const ensem) {
   if (ensem != NULL) {
     if (ensem->R != NULL)
-      for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly) {
+      for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly) {
         if (ensem->R[ipoly].r != NULL)
-          for (size_t ibead = 0; ibead < ensem->nmemb.bead; ++ibead)
+          for (size_t ibead = 0; ibead < ensem->Nmemb.bead; ++ibead)
             free(ensem->R[ipoly].r[ibead].d);
 
         free(ensem->R[ipoly].r);
@@ -793,34 +839,34 @@ static struct ensem* ensem_alloc(size_t const npoly, size_t const nbead,
   if (ensem == NULL)
     alloc = alloc_err;
   else {
-    ensem->nmemb.poly = npoly;
-    ensem->nmemb.bead = nbead;
-    ensem->nmemb.dim = ndim;
-    ensem->nmemb.subdiv = nsubdiv;
+    ensem->Nmemb.poly = npoly;
+    ensem->Nmemb.bead = nbead;
+    ensem->Nmemb.dim = ndim;
+    ensem->Nmemb.subdiv = nsubdiv;
 
-    ensem->nstep.thrm = nthrm;
-    ensem->nstep.prod = nprod;
-    ensem->nstep.thrmrec = nthrm;
-    ensem->nstep.prodrec = nprodrec;
+    ensem->Nstep.thrm = nthrm;
+    ensem->Nstep.prod = nprod;
+    ensem->Nstep.thrmrec = nthrm;
+    ensem->Nstep.prodrec = nprodrec;
 
     ensem->istep.thrm = 0;
     ensem->istep.prod = 0;
     ensem->istep.thrmrec = 0;
     ensem->istep.prodrec = 0;
 
-    ensem->R = alloc(ensem->nmemb.poly * sizeof *ensem->R);
+    ensem->R = alloc(ensem->Nmemb.poly * sizeof *ensem->R);
     if (ensem->R == NULL)
       alloc = alloc_err;
     else
-      for (size_t ipoly = 0; ipoly < ensem->nmemb.poly; ++ipoly) {
-        ensem->R[ipoly].r =
-          alloc(ensem->nmemb.bead * sizeof *ensem->R[ipoly].r);
+      for (size_t ipoly = 0; ipoly < ensem->Nmemb.poly; ++ipoly) {
+        ensem->R[ipoly].r = alloc(ensem->Nmemb.bead *
+            sizeof *ensem->R[ipoly].r);
         if (ensem->R[ipoly].r == NULL)
           alloc = alloc_err;
         else
-          for (size_t ibead = 0; ibead < ensem->nmemb.bead; ++ibead) {
-            ensem->R[ipoly].r[ibead].d =
-              alloc(ensem->nmemb.dim * sizeof *ensem->R[ipoly].r[ibead].d);
+          for (size_t ibead = 0; ibead < ensem->Nmemb.bead; ++ibead) {
+            ensem->R[ipoly].r[ibead].d = alloc(ensem->Nmemb.dim *
+                sizeof *ensem->R[ipoly].r[ibead].d);
             if (ensem->R[ipoly].r[ibead].d == NULL)
               alloc = alloc_err;
           }
@@ -838,11 +884,12 @@ static struct ensem* ensem_alloc(size_t const npoly, size_t const nbead,
 static void napkin_free(struct napkin* const napkin) {
   if (napkin != NULL) {
     if (napkin->hist.comd.R.r != NULL)
-      for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead)
+      for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead)
         free(napkin->hist.comd.R.r[ibead].d);
 
     free(napkin->hist.comd.R.r);
     free(napkin->hist.ssm.r.d);
+    free(napkin->P);
     stats_free(napkin->tde);
     ensem_free(napkin->ensem);
     gsl_rng_free(napkin->rng);
@@ -875,6 +922,16 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     if (napkin->tde == NULL)
       alloc = alloc_err;
 
+    // TODO This may refer to uninitialized `ensem`.
+    size_t const Nbin = size_pow(napkin->ensem->Nmemb.subdiv,
+        napkin->ensem->Nmemb.dim);
+    napkin->P = malloc(Nbin * sizeof *napkin->P);
+    if (napkin->P == NULL)
+      alloc = alloc_err;
+    else
+      for (size_t ibin = 0; ibin < Nbin; ++ibin)
+        napkin->P[ibin] = 0;
+
     napkin->params.ssm.accepted = 0;
     napkin->params.ssm.rejected = 0;
     napkin->params.ssm.dx = 1;
@@ -883,18 +940,18 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     napkin->params.comd.rejected = 0;
     napkin->params.comd.dx = 1;
 
-    napkin->hist.ssm.r.d = alloc(napkin->ensem->nmemb.dim *
+    napkin->hist.ssm.r.d = alloc(napkin->ensem->Nmemb.dim *
         sizeof *napkin->hist.ssm.r.d);
     if (napkin->hist.ssm.r.d == NULL)
       alloc = alloc_err;
 
-    napkin->hist.comd.R.r = alloc(napkin->ensem->nmemb.bead *
+    napkin->hist.comd.R.r = alloc(napkin->ensem->Nmemb.bead *
         sizeof *napkin->hist.comd.R.r);
     if (napkin->hist.comd.R.r == NULL)
       alloc = alloc_err;
     else
-      for (size_t ibead = 0; ibead < napkin->ensem->nmemb.bead; ++ibead) {
-        napkin->hist.comd.R.r[ibead].d = alloc(napkin->ensem->nmemb.dim *
+      for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
+        napkin->hist.comd.R.r[ibead].d = alloc(napkin->ensem->Nmemb.dim *
             sizeof *napkin->hist.comd.R.r[ibead].d);
         if (napkin->hist.comd.R.r[ibead].d == NULL)
           alloc = alloc_err;
@@ -954,24 +1011,24 @@ static void simulate(size_t const npoly, size_t const nbead,
 
 #ifdef DEBUG
 
-  napkin->ensem->nstep.thrm = 1;
-  napkin->ensem->nstep.prod = 1;
-  napkin->ensem->nstep.thrmrec = 1;
-  napkin->ensem->nstep.prodrec = 1;
+  napkin->ensem->Nstep.thrm = 1;
+  napkin->ensem->Nstep.prod = 1;
+  napkin->ensem->Nstep.thrmrec = 1;
+  napkin->ensem->Nstep.prodrec = 1;
 
 #endif
 
   napkin->ensem->periodic = periodic;
   napkin->ensem->L = L;
   napkin->ensem->beta = beta;
-  napkin->ensem->tau = napkin->ensem->beta / (double) napkin->ensem->nmemb.bead;
+  napkin->ensem->tau = napkin->ensem->beta / (double) napkin->ensem->Nmemb.bead;
   napkin->ensem->Vint = Vint;
   napkin->ensem->Vend = Vend;
   napkin->ensem->Vext = Vext;
 
   {
     double const q = omega / 2.0;
-    double const E = (double) napkin->ensem->nmemb.dim * q /
+    double const E = (double) napkin->ensem->Nmemb.dim * q /
       tanh(q * napkin->ensem->beta);
     (void) printf("Expected for QHO: E = %f\n", E);
   }
@@ -1006,10 +1063,10 @@ static void simulate(size_t const npoly, size_t const nbead,
   static double (* const workers[])(struct napkin*) = {work_ss, work_comd};
 
   for (size_t istep = 0;
-      istep < napkin->ensem->nstep.thrm + napkin->ensem->nstep.prod;
+      istep < napkin->ensem->Nstep.thrm + napkin->ensem->Nstep.prod;
       ++istep) {
-    choose(napkin,
-        workers[ran_index(napkin->rng, sizeof workers / sizeof *workers)]
+    choose(napkin, workers
+        [ran_index(napkin->rng, sizeof workers / sizeof *workers)]
         (napkin));
 
     int signum;
@@ -1023,9 +1080,9 @@ static void simulate(size_t const npoly, size_t const nbead,
           break;
       }
 
-    if (istep < napkin->ensem->nstep.thrm) {
-      if (napkin->ensem->nstep.prodrec * napkin->ensem->istep.thrm >
-          napkin->ensem->nstep.prod * napkin->ensem->istep.thrmrec) {
+    if (istep < napkin->ensem->Nstep.thrm) {
+      if (napkin->ensem->Nstep.prodrec * napkin->ensem->istep.thrm >
+          napkin->ensem->Nstep.prod * napkin->ensem->istep.thrmrec) {
         disp_drift(napkin, driftfp);
 
         ++napkin->ensem->istep.thrmrec;
@@ -1035,8 +1092,22 @@ static void simulate(size_t const npoly, size_t const nbead,
     } else {
       stats_accum(napkin->tde, est_tde(napkin->ensem));
 
-      if (napkin->ensem->nstep.prodrec * napkin->ensem->istep.prod >
-          napkin->ensem->nstep.prod * napkin->ensem->istep.prodrec) {
+      // TODO What a mess. Only works in 1d too.
+      for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
+        for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
+          size_t d;
+
+          // for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
+          d = size_uwrap((size_t)
+              floor(fp_lerp(napkin->ensem->R[ipoly].r[ibead].d[0],
+                  0.0, napkin->ensem->L, 0.0, napkin->ensem->Nmemb.subdiv)),
+              napkin->ensem->Nmemb.subdiv);
+
+          ++napkin->P[d];
+        }
+
+      if (napkin->ensem->Nstep.prodrec * napkin->ensem->istep.prod >
+          napkin->ensem->Nstep.prod * napkin->ensem->istep.prodrec) {
         disp_drift(napkin, driftfp);
         disp_tde(napkin, tdefp);
 
@@ -1052,6 +1123,8 @@ static void simulate(size_t const npoly, size_t const nbead,
 
   if (fclose(driftfp) == EOF)
     err_abort(fclose);
+
+  save_probability(napkin);
 
   status_line(napkin);
   status_file(napkin);
@@ -1073,6 +1146,7 @@ static void simulate(size_t const npoly, size_t const nbead,
 // TODO Figure out the correlation length for `sem` (half done).
 // TODO Find home for lost souls (half done).
 // TODO Consider different masses for different polymers (done).
+// TODO Histograms (position, pair correlation) for the people (half done).
 // TODO PIGS time!
 
 // Static Constants (N) -------------------------------------------------------
