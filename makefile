@@ -44,7 +44,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: err.o fp.o nth.o phys.o qho.o secs.o sigs.o size.o
+qho: err.o est.o fp.o nth.o phys.o qho.o ran.o secs.o sigs.o size.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

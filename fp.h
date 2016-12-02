@@ -70,6 +70,11 @@ double fp_max(double, double);
 __attribute__ ((__const__))
 double fp_pow(double, double);
 
+// The call `fp_rt(x, y)` returns the `y`th root of `x`.
+// This is analogous to `size_firt` or `size_cirt`.
+__attribute__ ((__const__))
+double fp_rt(double, double);
+
 // The statement `z = fp_uwrap(x, y)` solves
 // the periodic equation `z == x + n * y` for `z`,
 // where `0 <= z < y` and `n` is some integer.

@@ -67,11 +67,33 @@ size_t size_max(size_t, size_t);
 __attribute__ ((__const__))
 size_t size_pow(size_t, size_t);
 
+// The call `size_firt(x, y)` returns the floor of the `y`th root of `x`.
+// This is analogous to `fp_rt`.
+// Note that the result may be wrong for large arguments.
+__attribute__ ((__const__))
+size_t size_firt(size_t, size_t);
+
+// The call `size_cirt(x, y)` returns the ceiling of the `y`th root of `x`.
+// This is analogous to `fp_rt`.
+// Note that the result may be wrong for large arguments.
+__attribute__ ((__const__))
+size_t size_cirt(size_t, size_t);
+
 // The statement `z = size_uwrap(x, y)` solves
 // the periodic equation `z == x - n * y` for `z`,
 // where `0 <= z < y` and `n` is some integer.
 // This is analogous to `fp_uwrap`.
 __attribute__ ((__const__))
 size_t size_uwrap(size_t, size_t);
+
+// The statement `z = size_uwrap_inc(x, y)` is equivalent
+// to `z = size_uwrap(x + 1, y)` without overflowing (or wrapping).
+__attribute__ ((__const__))
+size_t size_uwrap_inc(size_t, size_t);
+
+// The statement `z = size_uwrap_dec(x, y)` is equivalent
+// to `z = size_uwrap(x - 1, y)` without underflowing (or wrapping).
+__attribute__ ((__const__))
+size_t size_uwrap_dec(size_t, size_t);
 
 #endif

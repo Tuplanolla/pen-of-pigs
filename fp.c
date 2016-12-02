@@ -48,6 +48,10 @@ double fp_pow(double const x, double const y) {
   return pow(x, y);
 }
 
+double fp_rt(double const x, double const y) {
+  return pow(x, 1.0 / y);
+}
+
 double fp_uwrap(double const x, double const y) {
   return x - y * floor(x / y);
 }

@@ -1,11 +1,12 @@
 #include "err.h"
+#include "est.h"
 #include "exts.h"
 #include "fp.h"
+#include "ran.h"
 #include "sigs.h"
 #include "size.h"
 #include <assert.h>
 #include <gsl/gsl_math.h>
-#include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
 #include <limits.h>
 #include <signal.h>
@@ -21,18 +22,6 @@ struct par {
   size_t accepted;
   size_t rejected;
   double dx;
-};
-
-struct est {
-  struct {
-    size_t N; // Samples.
-    double M1; // First moment.
-    double M2; // Second moment.
-  } acc; // Accumulator.
-  double mean; // Mean.
-  double var; // Variance.
-  double sd; // Standard deviation.
-  double sem; // Standard error of the mean.
 };
 
 struct step {
@@ -102,63 +91,6 @@ struct napkin {
   bool periodic;
 };
 
-// Lost Souls () --------------------------------------------------------------
-
-__attribute__ ((__nonnull__))
-static size_t ran_index(gsl_rng* const rng, size_t const n) {
-  return (size_t) gsl_rng_uniform_int(rng, n);
-}
-
-// Estimator Statistics (est) -------------------------------------------------
-
-static void est_free(struct est* const acc) {
-  free(acc);
-}
-
-__attribute__ ((__malloc__))
-static struct est* est_alloc(void) {
-  struct est* const est = malloc(sizeof *est);
-  if (est == NULL)
-    return NULL;
-
-  est->acc.N = 0;
-  est->acc.M1 = 0.0;
-  est->acc.M2 = 0.0;
-
-  return est;
-}
-
-__attribute__ ((__nonnull__))
-static void est_accum(struct est* const est, double const x) {
-  ++est->acc.N;
-  double const dx = x - est->acc.M1;
-  est->acc.M1 += dx / (double) est->acc.N;
-  est->acc.M2 += dx * (x - est->acc.M1);
-}
-
-__attribute__ ((__nonnull__))
-static void est_calc(struct est* const est) {
-  switch (est->acc.N) {
-    case 0:
-      est->mean = NAN;
-      est->var = NAN;
-      est->sd = NAN;
-      est->sem = NAN;
-      break;
-    case 1:
-      est->mean = est->acc.M1;
-      est->var = 0.0;
-      est->sd = 0.0;
-      est->sem = 0.0;
-      break;
-    default:
-      est->mean = est->acc.M1;
-      est->var = est->acc.M2 / (double) (est->acc.N - 1);
-      est->sd = sqrt(est->var);
-      est->sem = est->sd / sqrt((double) est->acc.N);
-  }
-}
-
 // Vector Math (bead) ---------------------------------------------------------
 
 // Minimal norm squared from origin.
@@ -167,8 +99,8 @@ static double bead_norm2(struct napkin const* const napkin,
     struct bead const r) {
   double s = 0.0;
 
-  double (* const f)(double, double) = napkin->periodic ?
-    fp_wrap : fp_constant;
+  double (* const f)(double, double) =
+    napkin->periodic ? fp_wrap : fp_constant;
 
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim)
     s += gsl_pow_2(f(r.d[idim], napkin->L));
@@ -189,8 +121,8 @@ static double bead_dist2(struct napkin const* const napkin,
     struct bead const r0, struct bead const r1) {
   double s = 0.0;
 
-  double (* const f)(double, double) = napkin->periodic ?
-    fp_wrap : fp_constant;
+  double (* const f)(double, double) =
+    napkin->periodic ? fp_wrap : fp_constant;
 
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim)
     s += gsl_pow_2(f(r1.d[idim] - r0.d[idim], napkin->L));
@@ -238,8 +170,8 @@ static void force_open(struct napkin* const napkin) {
 __attribute__ ((__nonnull__))
 static void force_cycle(struct napkin* const napkin) {
   for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly) {
-    napkin->R[ipoly].from = size_uwrap(ipoly + napkin->nmemb.poly - 1, napkin->nmemb.poly);
-    napkin->R[ipoly].to = size_uwrap(ipoly + 1, napkin->nmemb.poly);
+    napkin->R[ipoly].from = size_uwrap_dec(ipoly, napkin->nmemb.poly);
+    napkin->R[ipoly].to = size_uwrap_inc(ipoly, napkin->nmemb.poly);
   }
 }
 
@@ -252,7 +184,7 @@ static void conf_rand(struct napkin* const napkin) {
     for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead)
       for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim)
         napkin->R[ipoly].r[ibead].d[idim] =
-          gsl_ran_flat(napkin->rng, 0.0, napkin->L);
+          ran_uopen(napkin->rng, napkin->L);
 }
 
 // Random point initial configuration.
@@ -260,7 +192,7 @@ __attribute__ ((__nonnull__))
 static void conf_randpt(struct napkin* const napkin) {
   for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly)
     for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim) {
-      double const x = gsl_ran_flat(napkin->rng, 0, napkin->L);
+      double const x = ran_uopen(napkin->rng, napkin->L);
 
       for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead)
         napkin->R[ipoly].r[ibead].d[idim] = x;
@@ -270,10 +202,8 @@ static void conf_randpt(struct napkin* const napkin) {
 // Random lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void conf_randlatt(struct napkin* const napkin) {
-  double const w = ceil(pow((double) napkin->nmemb.poly,
-        1.0 / (double) napkin->nmemb.dim));
-  double const v = napkin->L / w;
-  size_t const n = (size_t) w;
+  size_t const n = size_cirt(napkin->nmemb.poly, napkin->nmemb.dim);
+  double const v = napkin->L / (double) n;
 
   for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead) {
@@ -283,7 +213,7 @@ static void conf_randlatt(struct napkin* const napkin) {
         size_div_t const z = size_div(i, n);
 
         napkin->R[ipoly].r[ibead].d[idim] =
-          (double) z.rem * v + gsl_ran_flat(napkin->rng, 0, v);
+          (double) z.rem * v + ran_uopen(napkin->rng, v);
         i = z.quot;
       }
     }
@@ -292,10 +222,8 @@ static void conf_randlatt(struct napkin* const napkin) {
 // Point lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void conf_ptlatt(struct napkin* const napkin) {
-  double const w = ceil(pow((double) napkin->nmemb.poly,
-        1.0 / (double) napkin->nmemb.dim));
-  double const v = napkin->L / w;
-  size_t const n = (size_t) w;
+  size_t const n = size_cirt(napkin->nmemb.poly, napkin->nmemb.dim);
+  double const v = napkin->L / (double) n;
 
   for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead) {
@@ -314,10 +242,8 @@ static void conf_ptlatt(struct napkin* const napkin) {
 // The equations are based on the theory of Lissajous knots.
 __attribute__ ((__nonnull__))
 static void conf_circlatt(struct napkin* const napkin) {
-  double const w = ceil(pow((double) napkin->nmemb.poly,
-        1.0 / (double) napkin->nmemb.dim));
-  double const v = napkin->L / w;
-  size_t const n = (size_t) w;
+  size_t const n = size_cirt(napkin->nmemb.poly, napkin->nmemb.dim);
+  double const v = napkin->L / (double) n;
 
   for (size_t ipoly = 0; ipoly < napkin->nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead) {
@@ -388,16 +314,15 @@ static void move_ss(struct napkin* const napkin,
   napkin->hist.ssm.ipoly = ipoly;
   napkin->hist.ssm.ibead = ibead;
 
-  double (* const f)(double, double) = napkin->periodic ?
-    fp_uwrap : fp_constant;
+  double (* const f)(double, double) =
+    napkin->periodic ? fp_uwrap : fp_constant;
 
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim) {
     napkin->hist.ssm.r.d[idim] = napkin->R[ipoly].r[ibead].d[idim];
 
-    napkin->R[ipoly].r[ibead].d[idim] = f(
-        napkin->R[ipoly].r[ibead].d[idim] +
-        napkin->params.ssm.dx * gsl_ran_flat(napkin->rng, -1.0, 1.0),
-        napkin->L);
+    napkin->R[ipoly].r[ibead].d[idim] =
+      f(napkin->R[ipoly].r[ibead].d[idim] +
+        napkin->params.ssm.dx * ran_open(napkin->rng, 1.0), napkin->L);
   }
 }
 
@@ -434,20 +359,19 @@ static void move_comd(struct napkin* const napkin,
 
   napkin->hist.comd.ipoly = ipoly;
 
-  double (* const f)(double, double) = napkin->periodic ?
-    fp_uwrap : fp_constant;
+  double (* const f)(double, double) =
+    napkin->periodic ? fp_uwrap : fp_constant;
 
   for (size_t idim = 0; idim < napkin->nmemb.dim; ++idim) {
     double const x = napkin->params.comd.dx *
-      gsl_ran_flat(napkin->rng, -1.0, 1.0);
+      ran_open(napkin->rng, 1.0);
 
     for (size_t ibead = 0; ibead < napkin->nmemb.bead; ++ibead) {
       napkin->hist.comd.R.r[ibead].d[idim] =
         napkin->R[ipoly].r[ibead].d[idim];
 
-      napkin->R[ipoly].r[ibead].d[idim] = f(
-          napkin->R[ipoly].r[ibead].d[idim] + x,
-          napkin->L);
+      napkin->R[ipoly].r[ibead].d[idim] =
+        f(napkin->R[ipoly].r[ibead].d[idim] + x, napkin->L);
     }
   }
 }
@@ -669,7 +593,7 @@ static double work_comd(struct napkin* const napkin) {
 __attribute__ ((__nonnull__))
 static void choose(struct napkin* const napkin,
     double const DeltaS) {
-  if (DeltaS <= 0.0 || gsl_ran_flat(napkin->rng, 0.0, 1.0) <= exp(-DeltaS))
+  if (DeltaS <= 0.0 || ran_uopen(napkin->rng, 1.0) <= exp(-DeltaS))
     napkin->accept(napkin);
   else
     napkin->reject(napkin);
@@ -708,12 +632,10 @@ static void disp_poly(struct napkin const* const napkin,
 __attribute__ ((__nonnull__))
 static void disp_tde(struct napkin const* const napkin,
     FILE* const fp) {
-  est_calc(napkin->tde);
-
   (void) fprintf(fp, "%zu %f %f %f\n",
-      napkin->istep.prod, est_tde(napkin), napkin->tde->mean,
+      napkin->istep.prod, est_tde(napkin), est_mean(napkin->tde),
       // Correlations!
-      napkin->tde->sem * (double) napkin->nmemb.bead);
+      est_sem(napkin->tde) * (double) napkin->nmemb.bead);
 }
 
 __attribute__ ((__nonnull__))
@@ -810,16 +732,14 @@ static void save_potential(struct napkin const* const napkin) {
 
 __attribute__ ((__nonnull__))
 static void status_line(struct napkin const* const napkin) {
-  est_calc(napkin->tde);
-
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f\n",
       napkin->istep.thrm, napkin->istep.prod, napkin->nstep.thrm, napkin->nstep.prod,
       100 * (napkin->istep.thrm + napkin->istep.prod) /
       (napkin->nstep.thrm + napkin->nstep.prod),
-      napkin->tde->mean,
+      est_mean(napkin->tde),
       // Correlations!
-      napkin->tde->sem * (double) napkin->nmemb.bead);
+      est_sem(napkin->tde) * (double) napkin->nmemb.bead);
 }
 
 __attribute__ ((__nonnull__))
@@ -1056,7 +976,9 @@ static void not_main(void) {
 
   static double (* const workers[])(struct napkin*) = {work_ss, work_comd};
 
-  for (size_t istep = 0; istep < napkin->nstep.thrm + napkin->nstep.prod; ++istep) {
+  for (size_t istep = 0;
+      istep < napkin->nstep.thrm + napkin->nstep.prod;
+      ++istep) {
     choose(napkin,
         workers[ran_index(napkin->rng, sizeof workers / sizeof *workers)]
         (napkin));
@@ -1084,7 +1006,8 @@ static void not_main(void) {
     } else {
       est_accum(napkin->tde, est_tde(napkin));
 
-      if (napkin->nstep.prodrec * napkin->istep.prod > napkin->nstep.prod * napkin->istep.prodrec) {
+      if (napkin->nstep.prodrec * napkin->istep.prod >
+          napkin->nstep.prod * napkin->istep.prodrec) {
         disp_drift(napkin, driftfp);
         disp_tde(napkin, tdefp);
 
