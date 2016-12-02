@@ -13,7 +13,7 @@ dfx(i, x, y) = p(x1 - x2)
 dfy(i, x, y) = p(y1 - y2)
 set xrange [0 : L]
 plot for [dx = -L : L : L] \
-  'qho-ensemble.data' using \
+  'qho-ensemble-2d.data' using \
   (fx($1, $2 + dx, $1)) : (fy($1, $2 + dx, $1)) : \
   (dfx($1, $2 + dx, $1)) : (dfy($1, $2 + dx, $1)) \
   with vectors linetype 1

@@ -12,14 +12,18 @@ void stats_free(struct stats* const stats) {
   free(stats);
 }
 
+void stats_forget(struct stats* const stats) {
+  stats->N = 0;
+  stats->M1 = 0.0;
+  stats->M2 = 0.0;
+}
+
 struct stats* stats_alloc(void) {
   struct stats* const stats = malloc(sizeof *stats);
   if (stats == NULL)
     return NULL;
 
-  stats->N = 0;
-  stats->M1 = 0.0;
-  stats->M2 = 0.0;
+  stats_forget(stats);
 
   return stats;
 }

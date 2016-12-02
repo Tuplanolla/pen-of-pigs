@@ -1,6 +1,8 @@
 #ifndef EXTS_H
 #define EXTS_H
 
+#include <stdbool.h>
+
 // This disables GNU extensions if they are unsupported.
 #if !defined __GNUC__ || __GNUC__ < 4
 #ifndef __attribute__
@@ -30,6 +32,19 @@
 // with an extra parameter, which makes it consistent with `static_assert`.
 #ifndef dynamic_assert
 #define dynamic_assert(p, s) assert(p)
+#endif
+
+// This ensures that exactly one of `NDEBUG` or `DEBUG` is defined.
+#ifdef DEBUG
+#ifdef NDEBUG
+static_assert(false, "contradictory debug directives");
+#else
+#endif
+#else
+#ifdef NDEBUG
+#else
+#define NDEBUG
+#endif
 #endif
 
 // This preprocessor directive makes it possible to write `for ever`.

@@ -3,7 +3,7 @@
 s='EXIT HUP INT QUIT PIPE TERM' && \
 d=$(mktemp -d) && \
 trap 'trap - $s && rm -fr "$d" && kill -- "-$$"' $s && \
-t=3 && \
+t=5 && \
 trap wait CONT && \
 for x in *.gp
 do
@@ -26,6 +26,11 @@ do
         fi && \
         gnuplot -p "$y" 2> /dev/null & \
         p="$!"
+      elif kill -0 "$p" 2> /dev/null
+      then :
+      else
+        gnuplot -p "$y" 2> /dev/null & \
+        p="$!"
       fi && \
       sleep "$t" && \
       t0="$t1" || exit 1
@@ -33,5 +38,3 @@ do
   ) &
 done && \
 wait
-
-# alias ungpmon="kill $ps 2> /dev/null"
