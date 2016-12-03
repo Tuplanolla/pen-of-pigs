@@ -637,7 +637,7 @@ static void disp_tde(struct napkin const* const napkin,
     FILE* const fp) {
   (void) fprintf(fp, "%zu %f %f %f\n",
       napkin->ensem->istep.prod, est_tde(napkin->ensem),
-      stats_mean(napkin->tde), stats_sem(napkin->tde));
+      cstats_mean(napkin->ctde), cstats_sem(napkin->ctde));
 }
 
 __attribute__ ((__nonnull__))
@@ -788,7 +788,7 @@ static void status_line(struct napkin const* const napkin) {
       napkin->ensem->istep.thrm, napkin->ensem->istep.prod, napkin->ensem->Nstep.thrm, napkin->ensem->Nstep.prod,
       100 * (napkin->ensem->istep.thrm + napkin->ensem->istep.prod) /
       (napkin->ensem->Nstep.thrm + napkin->ensem->Nstep.prod),
-      cstats_mean(napkin->ctde), cstats_sem(napkin->ctde),
+      cstats_mean(napkin->ctde), cstats_corrsem(napkin->ctde),
       cstats_corrtime(napkin->ctde));
 }
 
@@ -1090,8 +1090,6 @@ static void simulate(size_t const npoly, size_t const nbead,
       ++napkin->ensem->istep.thrm;
     } else {
       stats_accum(napkin->tde, est_tde(napkin->ensem));
-
-      // TODO No!
       (void) cstats_accum(napkin->ctde, est_tde(napkin->ensem));
 
       // TODO What a mess. Only works in 1d too.

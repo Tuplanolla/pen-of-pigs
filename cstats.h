@@ -25,11 +25,6 @@ struct cstats* cstats_alloc(size_t);
 __attribute__ ((__nonnull__))
 bool cstats_accum(struct cstats*, double);
 
-// The call `cstats_corrtime(cstats)` returns
-// the estimated correlation time of the cache `cstats`.
-__attribute__ ((__nonnull__, __pure__))
-double cstats_corrtime(struct cstats const*);
-
 // The call `cstats_mean(cstats)` returns
 // the arithmetic mean of the cache `cstats`.
 __attribute__ ((__nonnull__, __pure__))
@@ -44,9 +39,24 @@ double cstats_var(struct cstats const*);
 __attribute__ ((__nonnull__, __pure__))
 double cstats_sd(struct cstats const*);
 
+// The call `cstats_autocorr(cstats, k)` returns
+// the estimated lag `k` autocorrelation of the cache `cstats`.
+__attribute__ ((__nonnull__, __pure__))
+double cstats_autocorr(struct cstats const*, size_t);
+
+// The call `cstats_corrtime(cstats)` returns
+// the estimated correlation time of the cache `cstats`.
+__attribute__ ((__nonnull__, __pure__))
+double cstats_corrtime(struct cstats const*);
+
 // The call `cstats_sem(cstats)` returns
 // the standard error of the mean of the cache `cstats`.
 __attribute__ ((__nonnull__, __pure__))
 double cstats_sem(struct cstats const*);
+
+// The call `cstats_corrsem(cstats)` returns
+// the correlation-corrected standard error of the mean of the cache `cstats`.
+__attribute__ ((__nonnull__, __pure__))
+double cstats_corrsem(struct cstats const*);
 
 #endif
