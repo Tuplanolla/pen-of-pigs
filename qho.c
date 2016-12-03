@@ -750,20 +750,25 @@ static void save_probability(struct napkin const* const napkin) {
 
   size_t const Nbin = size_pow(napkin->ensem->Nmemb.subdiv,
       napkin->ensem->Nmemb.dim);
+  size_t N = 0.0;
+  for (size_t ibin = 0; ibin < Nbin; ++ibin)
+    N += napkin->P[ibin];
+  double const Nv = (double) N * v;
   for (size_t ibin = 0; ibin < Nbin; ++ibin) {
     size_t i = ibin;
 
     for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim) {
       size_div_t const z = size_div(i, napkin->ensem->Nmemb.subdiv + 1);
 
-      r.d[idim] = (double) z.rem * v;
+      // TODO Half-bin offset!
+      r.d[idim] = ((double) z.rem + 0.5) * v;
       i = z.quot;
     }
 
     for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
       (void) fprintf(fp, "%f ", r.d[idim]);
 
-    (void) fprintf(fp, "%zu\n", napkin->P[ibin]);
+    (void) fprintf(fp, "%f\n", (double) napkin->P[ibin] / Nv);
   }
 
   free(d);
@@ -1154,7 +1159,7 @@ static void simulate(size_t const npoly, size_t const nbead,
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 32)
 #define NDIM ((size_t) 1)
-#define NSUBDIV ((size_t) 16)
+#define NSUBDIV ((size_t) (NDIM == 1 ? 128 : NDIM == 2 ? 48 : 16))
 
 #define NTHRM ((size_t) 1 << 14)
 #define NPROD ((size_t) 1 << 18)
