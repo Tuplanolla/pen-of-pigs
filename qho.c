@@ -18,6 +18,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#define DIM_MAX ((size_t) 4)
+#define POLY_MAX ((size_t) 32)
+#define BEAD_MAX ((size_t) 256)
+#define SUBDIV_MAX ((size_t) 2048)
+
 // Types () -------------------------------------------------------------------
 
 // This structure contains the number of thermalization and production steps
@@ -30,9 +35,9 @@ struct step {
 };
 
 struct memb {
+  size_t dim;
   size_t poly;
   size_t bead;
-  size_t dim;
   size_t subdiv;
 };
 
@@ -637,7 +642,8 @@ static void disp_tde(struct napkin const* const napkin,
     FILE* const fp) {
   (void) fprintf(fp, "%zu %f %f %f\n",
       napkin->ensem->istep.prod, est_tde(napkin->ensem),
-      cstats_mean(napkin->ctde), cstats_sem(napkin->ctde));
+      // TODO Urgh!
+      cstats_mean(napkin->ctde), 100 * cstats_sem(napkin->ctde));
 }
 
 __attribute__ ((__nonnull__))
@@ -652,7 +658,11 @@ static void disp_drift(struct napkin const* const napkin,
 
 __attribute__ ((__nonnull__))
 static void save_length(struct napkin const* const napkin) {
-  FILE* const fp = fopen("qho-length.data", "w");
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-length-%zud.data", napkin->ensem->Nmemb.dim) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
   if (fp == NULL)
     err_abort(fopen);
 
@@ -680,7 +690,11 @@ static void save_esl(struct napkin const* const napkin) {
 
 __attribute__ ((__nonnull__))
 static void save_subdivisions(struct napkin const* const napkin) {
-  FILE* const fp = fopen("qho-subdivisions.data", "w");
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-subdivisions-%zud.data", napkin->ensem->Nmemb.dim) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
   if (fp == NULL)
     err_abort(fopen);
 
@@ -817,15 +831,16 @@ static void ensem_free(struct ensem* const ensem) {
 }
 
 __attribute__ ((__malloc__))
-static struct ensem* ensem_alloc(size_t const npoly, size_t const nbead,
-    size_t const ndim, size_t const nsubdiv,
+static struct ensem* ensem_alloc(size_t const ndim,
+    size_t const npoly, size_t const nbead,
+    size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec) {
   // These assertions guarantee that adding or multiplying two steps or indices
   // never wraps around, which makes their manipulation easier.
-  dynamic_assert(npoly <= RT_SIZE_MAX(4), "too many polymers");
-  dynamic_assert(nbead <= RT_SIZE_MAX(4), "too many beads");
-  dynamic_assert(ndim <= RT_SIZE_MAX(4), "too many dimensions");
+  dynamic_assert(ndim <= DIM_MAX, "too many dimensions");
+  dynamic_assert(npoly <= POLY_MAX, "too many polymers");
+  dynamic_assert(nbead <= BEAD_MAX, "too many beads");
   dynamic_assert(nthrm <= RT_SIZE_MAX(2), "too many thermalization steps");
   dynamic_assert(nprod <= RT_SIZE_MAX(2), "too many production steps");
   dynamic_assert(nthrmrec <= nthrm, "too many thermalization recording steps");
@@ -837,9 +852,9 @@ static struct ensem* ensem_alloc(size_t const npoly, size_t const nbead,
   if (ensem == NULL)
     alloc = alloc_err;
   else {
+    ensem->Nmemb.dim = ndim;
     ensem->Nmemb.poly = npoly;
     ensem->Nmemb.bead = nbead;
-    ensem->Nmemb.dim = ndim;
     ensem->Nmemb.subdiv = nsubdiv;
 
     ensem->Nstep.thrm = nthrm;
@@ -898,8 +913,9 @@ static void napkin_free(struct napkin* const napkin) {
 }
 
 __attribute__ ((__malloc__))
-static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
-    size_t const ndim, size_t const nsubdiv,
+static struct napkin* napkin_alloc(size_t const ndim,
+    size_t const npoly, size_t const nbead,
+    size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec) {
   alloc_proc alloc = malloc;
@@ -912,7 +928,7 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     if (napkin->rng == NULL)
       alloc = alloc_err;
 
-    napkin->ensem = ensem_alloc(npoly, nbead, ndim, nsubdiv,
+    napkin->ensem = ensem_alloc(ndim, npoly, nbead, nsubdiv,
         nthrm, nprod, nthrmrec, nprodrec);
     if (napkin->ensem == NULL)
       alloc = alloc_err;
@@ -993,8 +1009,9 @@ static double V_zero(
   return 0.0;
 }
 
-static void simulate(size_t const npoly, size_t const nbead,
-    size_t const ndim, size_t const nsubdiv,
+static void simulate(size_t const ndim,
+    size_t const npoly, size_t const nbead,
+    size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
     bool periodic, double L, double beta,
@@ -1003,7 +1020,7 @@ static void simulate(size_t const npoly, size_t const nbead,
     double (* Vext)(struct ensem const*, struct bead)) {
   err_reset();
 
-  struct napkin* const napkin = napkin_alloc(npoly, nbead, ndim, nsubdiv,
+  struct napkin* const napkin = napkin_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec);
   if (napkin == NULL)
     err_abort(napkin_alloc);
@@ -1150,12 +1167,11 @@ static void simulate(size_t const npoly, size_t const nbead,
 // TODO Correlation time estimation (half done).
 // TODO PIGS time!
 
-// Static Constants (N) -------------------------------------------------------
-
+#define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 32)
-#define NDIM ((size_t) 1)
-#define NSUBDIV ((size_t) (NDIM == 1 ? 128 : NDIM == 2 ? 48 : 16))
+
+#define NSUBDIV ((size_t) (NDIM == 1 ? 256 : NDIM == 2 ? 64 : 16))
 
 #define NTHRM ((size_t) 1 << 14)
 #define NPROD ((size_t) 1 << 18)
@@ -1165,7 +1181,7 @@ static void simulate(size_t const npoly, size_t const nbead,
 int main(void) {
   double const T = 0.1;
 
-  simulate(NPOLY, NBEAD, NDIM, NSUBDIV,
+  simulate(NDIM, NPOLY, NBEAD, NSUBDIV,
       NTHRM, NPROD, NTHRMREC, NPRODREC,
       true, 10.0, 1.0 / T, V_lj612, V_zero, Vext_harm);
 

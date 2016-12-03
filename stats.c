@@ -39,8 +39,6 @@ double stats_mean(struct stats const* const stats) {
   switch (stats->N) {
     case 0:
       return NAN;
-    case 1:
-      return stats->M1;
     default:
       return stats->M1;
   }

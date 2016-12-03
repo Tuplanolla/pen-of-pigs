@@ -4,8 +4,8 @@ set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$V$'
 unset key
-N = `cat 'qho-subdivisions.data'` + 1
-L = `cat 'qho-length.data'`
+N = `cat 'qho-subdivisions-2d.data'` + 1
+L = `cat 'qho-length-2d.data'`
 set xrange [0 - L / 2 : L + L / 2]
 set yrange [0 - L / 2 : L + L / 2]
 set dgrid3d N, N

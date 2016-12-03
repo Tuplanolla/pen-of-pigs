@@ -7,32 +7,32 @@
 
 #define RT_SIZE_MAX(n) ((size_t) 1 << CHAR_BIT * sizeof (size_t) / (n))
 
-// The statement `x = size_identity(x)` does not do anything.
+// The statement `n = size_identity(n)` does not do anything.
 // This is analogous to `fp_identity`.
 __attribute__ ((__const__))
 size_t size_identity(size_t);
 
-// The call `size_zero(x)` returns `0`.
+// The call `size_zero(n)` returns `0`.
 // This is analogous to `fp_zero`.
 __attribute__ ((__const__))
 size_t size_zero(size_t);
 
-// The call `y = size_one(x)` returns `1`.
+// The call `k = size_one(n)` returns `1`.
 // This is analogous to `fp_one`.
 __attribute__ ((__const__))
 size_t size_one(size_t);
 
-// The call `size_cmp(x, y)` returns
+// The call `size_cmp(n, k)` returns
 //
-// * `-1` if `x < y`,
-// * `1` if `x > y` and
+// * `-1` if `n < k`,
+// * `1` if `n > k` and
 // * `0` otherwise.
 //
 // This is analogous to `fp_cmp`.
 __attribute__ ((__const__))
 int size_cmp(size_t, size_t);
 
-// The call `size_midpoint(x, y)` returns the arithmetic mean of `x` and `y`.
+// The call `size_midpoint(n, k)` returns the arithmetic mean of `n` and `k`.
 // This is analogous to `fp_midpoint`.
 __attribute__ ((__const__))
 size_t size_midpoint(size_t, size_t);
@@ -44,55 +44,71 @@ typedef struct {
   size_t rem;
 } size_div_t;
 
-// The statement `z = size_div(x, y)` solves
-// the division equation `z.quot * y + z.rem == x` for `z`,
-// where `z.quot` is the quotient and `z.rem` is the remainder
-// of the expression `x / y`.
+// The statement `m = size_div(n, k)` solves
+// the division equation `m.quot * k + m.rem == n` for `m`,
+// where `m.quot` is the quotient and `m.rem` is the remainder
+// of the expression `n / k`.
 // This is analogous to `div`.
 __attribute__ ((__const__))
 size_div_t size_div(size_t, size_t);
 
-// The statement `size_min(x, y)` returns the lesser of `x` and `y`.
+// The statement `size_min(n, k)` returns the lesser of `n` and `k`.
 // This is analogous to `fmin`.
 __attribute__ ((__const__))
 size_t size_min(size_t, size_t);
 
-// The statement `size_max(x, y)` returns the greater of `x` and `y`.
+// The statement `size_max(n, k)` returns the greater of `n` and `k`.
 // This is analogous to `fmax`.
 __attribute__ ((__const__))
 size_t size_max(size_t, size_t);
 
-// The call `size_pow(x, y)` returns `x` raised to the power of `y`.
+// The call `size_pow(n, k)` returns `n` raised to the power of `k`.
 // This is analogous to `pow`.
 __attribute__ ((__const__))
 size_t size_pow(size_t, size_t);
 
-// The call `size_firt(x, y)` returns the floor of the `y`th root of `x`.
+// The call `size_firt(n, k)` returns the floor of the `k`th root of `n`.
 // This is analogous to `fp_rt`.
 // Note that the result may be wrong for large arguments.
 __attribute__ ((__const__))
 size_t size_firt(size_t, size_t);
 
-// The call `size_cirt(x, y)` returns the ceiling of the `y`th root of `x`.
+// The call `size_cirt(n, k)` returns the ceiling of the `k`th root of `n`.
 // This is analogous to `fp_rt`.
 // Note that the result may be wrong for large arguments.
 __attribute__ ((__const__))
 size_t size_cirt(size_t, size_t);
 
-// The statement `z = size_uwrap(x, y)` solves
-// the periodic equation `z == x - n * y` for `z`,
-// where `0 <= z < y` and `n` is some integer.
+// The call `size_hc(ilin, nlin, icub, ndim)` sets `icub`
+// to the hypercubical index corresponding to the linear index `ilin`
+// in a hypercube of side length `nlin` and dimension `ndim`.
+// Immediately after the call it is guaranteed that
+// `ilin == size_unhc(nlin, icub, ndim)`.
+__attribute__ ((__nonnull__))
+void size_hc(size_t, size_t, size_t*, size_t);
+
+// The statement `ilin = size_unhc(nlin, icub, ndim)` sets `ilin`
+// to the linear index corresponding to the hypercubical index `icub`
+// in a hypercube of side length `nlin` and dimension `ndim`.
+// Immediately after the statement it is guaranteed that
+// `size_hc(ilin, nlin, icub, ndim)` does nothing.
+__attribute__ ((__nonnull__, __pure__))
+size_t size_unhc(size_t, size_t const*, size_t);
+
+// The statement `m = size_uwrap(n, k)` solves
+// the periodic equation `m == n - n * k` for `m`,
+// where `0 <= m < k` and `n` is some integer.
 // This is analogous to `fp_uwrap`.
 __attribute__ ((__const__))
 size_t size_uwrap(size_t, size_t);
 
-// The statement `z = size_uwrap_inc(x, y)` is equivalent
-// to `z = size_uwrap(x + 1, y)` without overflowing (or wrapping).
+// The statement `m = size_uwrap_inc(n, k)` is equivalent
+// to `m = size_uwrap(n + 1, k)` without overflowing (or wrapping).
 __attribute__ ((__const__))
 size_t size_uwrap_inc(size_t, size_t);
 
-// The statement `z = size_uwrap_dec(x, y)` is equivalent
-// to `z = size_uwrap(x - 1, y)` without underflowing (or wrapping).
+// The statement `m = size_uwrap_dec(n, k)` is equivalent
+// to `m = size_uwrap(n - 1, k)` without underflowing (or wrapping).
 __attribute__ ((__const__))
 size_t size_uwrap_dec(size_t, size_t);
 

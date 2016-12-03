@@ -3,7 +3,7 @@
 set xlabel '$x$'
 set ylabel '$V$'
 unset key
-L = `cat 'qho-length.data'`
+L = `cat 'qho-length-1d.data'`
 set xrange [0 - L / 2 : L + L / 2]
 plot for [dx = -L : L : L] \
   'qho-potential-1d.data' using \

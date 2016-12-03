@@ -66,8 +66,6 @@ double cstats_mean(struct cstats const* const cstats) {
   switch (cstats->N) {
     case 0:
       return NAN;
-    case 1:
-      return cstats->M1;
     default:
       return cstats->M1;
   }
@@ -125,9 +123,8 @@ double cstats_sem(struct cstats const* const cstats) {
       return NAN;
     case 1:
       return 0.0;
-    default: {
-        return sqrt(cstats_var(cstats) / (double) cstats->N);
-      }
+    default:
+      return sqrt(cstats_var(cstats) / (double) cstats->N);
   }
 }
 

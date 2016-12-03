@@ -4,7 +4,7 @@ set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$z$'
 unset key
-L = `cat 'qho-length.data'`
+L = `cat 'qho-length-3d.data'`
 p(q) = q > L / 2 ? q - L : q < -L / 2 ? q + L : q
 fx(i, x, y, z) = i == 0 ? \
   (x2 = NaN, y2 = NaN, z2 = NaN, x1 = x, y1 = y, z1 = z, x2) : \
