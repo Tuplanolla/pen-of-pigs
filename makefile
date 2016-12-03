@@ -44,7 +44,7 @@ clean: shallow-clean
 shallow-clean:
 	$(RM) *.o
 
-qho: cstats.o err.o fp.o qho.o ran.o secs.o sigs.o size.o stats.o
+qho: err.o fp.o qho.o ran.o secs.o sigs.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c *.h

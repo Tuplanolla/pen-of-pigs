@@ -1,4 +1,3 @@
-#include "cstats.h"
 #include "err.h"
 #include "exts.h"
 #include "fp.h"
@@ -77,7 +76,6 @@ struct ensem {
 struct napkin {
   gsl_rng* rng;
   struct stats* tde;
-  struct cstats* ctde;
   // TODO Iterate all polymers and beads and collect the positions into bins.
   size_t* p;
   // TODO Iterate all polymer pairs and collect the distances into bins.
@@ -638,7 +636,7 @@ static void disp_tde(struct napkin const* const napkin,
   (void) fprintf(fp, "%zu %f %f %f\n",
       napkin->ensem.istep.prod, est_tde(&napkin->ensem),
       // TODO Urgh!
-      cstats_mean(napkin->ctde), 100 * cstats_sem(napkin->ctde));
+      stats_mean(napkin->tde), 100 * stats_sem(napkin->tde));
 }
 
 __attribute__ ((__nonnull__))
@@ -650,6 +648,22 @@ static void disp_drift(struct napkin const* const napkin,
 }
 
 // Saving into Data Files (save)
+
+__attribute__ ((__nonnull__))
+static void save_beads(struct napkin const* const napkin) {
+  char str[BUFSIZ]; // Always longer than 256 and safe!
+  if (snprintf(str, BUFSIZ, "qho-beads-%zud.data", napkin->ensem.Nmemb.dim) < 0)
+    err_abort(snprintf);
+
+  FILE* const fp = fopen(str, "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  (void) fprintf(fp, "%zu\n", napkin->ensem.Nmemb.bead);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
 
 __attribute__ ((__nonnull__))
 static void save_length(struct napkin const* const napkin) {
@@ -785,8 +799,8 @@ static void status_line(struct napkin const* const napkin) {
       napkin->ensem.istep.thrm, napkin->ensem.istep.prod, napkin->ensem.Nstep.thrm, napkin->ensem.Nstep.prod,
       100 * (napkin->ensem.istep.thrm + napkin->ensem.istep.prod) /
       (napkin->ensem.Nstep.thrm + napkin->ensem.Nstep.prod),
-      cstats_mean(napkin->ctde), cstats_corrsem(napkin->ctde),
-      cstats_corrtime(napkin->ctde));
+      stats_mean(napkin->tde), stats_corrsem(napkin->tde),
+      stats_corrtime(napkin->tde));
 }
 
 __attribute__ ((__nonnull__))
@@ -800,7 +814,6 @@ static void napkin_free(struct napkin* const napkin) {
   if (napkin != NULL) {
     free(napkin->p);
 
-    cstats_free(napkin->ctde);
     stats_free(napkin->tde);
 
     gsl_rng_free(napkin->rng);
@@ -840,12 +853,8 @@ static struct napkin* napkin_alloc(size_t const ndim,
     napkin->ensem.istep.thrmrec = 0;
     napkin->ensem.istep.prodrec = 0;
 
-    napkin->tde = stats_alloc();
+    napkin->tde = stats_alloc(nprod);
     if (napkin->tde == NULL)
-      e = true;
-
-    napkin->ctde = cstats_alloc(nprod);
-    if (napkin->ctde == NULL)
       e = true;
 
     size_t const Nbin = size_pow(nsubdiv, ndim);
@@ -962,6 +971,7 @@ static void simulate(size_t const ndim,
   Rm_const(napkin, 1.0);
 
   save_length(napkin);
+  save_beads(napkin);
   save_subdivisions(napkin);
   save_potential(napkin);
 
@@ -1009,8 +1019,7 @@ static void simulate(size_t const ndim,
 
       ++napkin->ensem.istep.thrm;
     } else {
-      stats_accum(napkin->tde, est_tde(&napkin->ensem));
-      (void) cstats_accum(napkin->ctde, est_tde(&napkin->ensem));
+      (void) stats_accum(napkin->tde, est_tde(&napkin->ensem));
 
       // TODO What a mess. Only works in 1d too.
       for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
@@ -1060,21 +1069,19 @@ static void simulate(size_t const ndim,
 // TODO Meditate about the anisotropy and symmetry of potentials (done).
 // TODO Deal with the disparity `/ 2` in K_total and V_total (done).
 // TODO Make periodicity conditional (done).
-// TODO Consider producing a histogram (half done).
 // TODO Fix V/K scaling and offsets (done).
-// TODO Abstract generic calculations for qho and He-4 (half done).
-// TODO Figure out the correlation length for `sem` (half done).
-// TODO Find home for lost souls (half done).
+// TODO Find home for lost souls (done).
 // TODO Consider different masses for different polymers (done).
+// TODO Correlation time estimation (done).
+// TODO Abstract generic calculations for qho and He-4 (half done).
 // TODO Histograms (position, pair correlation) for the people (half done).
-// TODO Correlation time estimation (half done).
-// TODO PIGS time!
+// TODO PIGS time (half done)!
 
 #define NDIM ((size_t) 1)
 #define NPOLY ((size_t) 1)
 #define NBEAD ((size_t) 32)
 
-#define NSUBDIV ((size_t) (NDIM == 1 ? 256 : NDIM == 2 ? 64 : 16))
+#define NSUBDIV ((size_t) (NDIM == 1 ? 256 : NDIM == 2 ? 16 : 4))
 
 #define NTHRM ((size_t) 1 << 14)
 #define NPROD ((size_t) 1 << 18)
