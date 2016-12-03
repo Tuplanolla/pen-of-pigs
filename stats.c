@@ -75,6 +75,6 @@ double stats_sem(struct stats const* const stats) {
     case 1:
       return 0.0;
     default:
-      return stats_sd(stats) / sqrt((double) stats->N);
+      return sqrt(stats_var(stats) / (double) stats->N);
   }
 }

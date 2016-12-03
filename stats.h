@@ -4,6 +4,7 @@
 #include "exts.h"
 #include <stddef.h>
 
+// This structure holds statistics.
 struct stats;
 
 // The call `stats_free(stats)` releases the memory

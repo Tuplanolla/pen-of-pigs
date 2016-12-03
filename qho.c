@@ -1,3 +1,5 @@
+#include "alloc.h"
+#include "cstats.h"
 #include "err.h"
 #include "exts.h"
 #include "fp.h"
@@ -63,6 +65,7 @@ struct napkin {
   gsl_rng* rng;
   struct ensem* ensem;
   struct stats* tde;
+  struct cstats* ctde;
   size_t* P;
   size_t* g;
   struct {
@@ -633,9 +636,8 @@ __attribute__ ((__nonnull__))
 static void disp_tde(struct napkin const* const napkin,
     FILE* const fp) {
   (void) fprintf(fp, "%zu %f %f %f\n",
-      napkin->ensem->istep.prod, est_tde(napkin->ensem), stats_mean(napkin->tde),
-      // Correlations!
-      stats_sem(napkin->tde) * (double) napkin->ensem->Nmemb.bead);
+      napkin->ensem->istep.prod, est_tde(napkin->ensem),
+      stats_mean(napkin->tde), stats_sem(napkin->tde));
 }
 
 __attribute__ ((__nonnull__))
@@ -782,26 +784,17 @@ static void save_probability(struct napkin const* const napkin) {
 __attribute__ ((__nonnull__))
 static void status_line(struct napkin const* const napkin) {
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
-      "E = %f +- %f\n",
+      "E = %f +- %f (kappa = %f)\n",
       napkin->ensem->istep.thrm, napkin->ensem->istep.prod, napkin->ensem->Nstep.thrm, napkin->ensem->Nstep.prod,
       100 * (napkin->ensem->istep.thrm + napkin->ensem->istep.prod) /
       (napkin->ensem->Nstep.thrm + napkin->ensem->Nstep.prod),
-      stats_mean(napkin->tde),
-      // Correlations!
-      stats_sem(napkin->tde) * (double) napkin->ensem->Nmemb.bead);
+      cstats_mean(napkin->ctde), cstats_sem(napkin->ctde),
+      cstats_corrtime(napkin->ctde));
 }
 
 __attribute__ ((__nonnull__))
 static void status_file(struct napkin const* const napkin) {
   save_esl(napkin);
-}
-
-// Allocation (alloc) ---------------------------------------------------------
-
-typedef void* (* alloc_proc)(size_t);
-
-static void* alloc_err(__attribute__ ((__unused__)) size_t const n) {
-  return NULL;
 }
 
 // Napkin Management (napkin) -------------------------------------------------
@@ -895,6 +888,7 @@ static void napkin_free(struct napkin* const napkin) {
     free(napkin->hist.comd.R.r);
     free(napkin->hist.ssm.r.d);
     free(napkin->P);
+    cstats_free(napkin->ctde);
     stats_free(napkin->tde);
     ensem_free(napkin->ensem);
     gsl_rng_free(napkin->rng);
@@ -927,9 +921,11 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     if (napkin->tde == NULL)
       alloc = alloc_err;
 
-    // TODO This may refer to uninitialized `ensem`.
-    size_t const Nbin = size_pow(napkin->ensem->Nmemb.subdiv,
-        napkin->ensem->Nmemb.dim);
+    napkin->ctde = cstats_alloc(nprod);
+    if (napkin->ctde == NULL)
+      alloc = alloc_err;
+
+    size_t const Nbin = size_pow(nsubdiv, ndim);
     napkin->P = malloc(Nbin * sizeof *napkin->P);
     if (napkin->P == NULL)
       alloc = alloc_err;
@@ -945,18 +941,16 @@ static struct napkin* napkin_alloc(size_t const npoly, size_t const nbead,
     napkin->params.comd.rejected = 0;
     napkin->params.comd.dx = 1;
 
-    napkin->hist.ssm.r.d = alloc(napkin->ensem->Nmemb.dim *
-        sizeof *napkin->hist.ssm.r.d);
+    napkin->hist.ssm.r.d = alloc(ndim * sizeof *napkin->hist.ssm.r.d);
     if (napkin->hist.ssm.r.d == NULL)
       alloc = alloc_err;
 
-    napkin->hist.comd.R.r = alloc(napkin->ensem->Nmemb.bead *
-        sizeof *napkin->hist.comd.R.r);
+    napkin->hist.comd.R.r = alloc(nbead * sizeof *napkin->hist.comd.R.r);
     if (napkin->hist.comd.R.r == NULL)
       alloc = alloc_err;
     else
-      for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
-        napkin->hist.comd.R.r[ibead].d = alloc(napkin->ensem->Nmemb.dim *
+      for (size_t ibead = 0; ibead < nbead; ++ibead) {
+        napkin->hist.comd.R.r[ibead].d = alloc(ndim *
             sizeof *napkin->hist.comd.R.r[ibead].d);
         if (napkin->hist.comd.R.r[ibead].d == NULL)
           alloc = alloc_err;
@@ -1097,6 +1091,9 @@ static void simulate(size_t const npoly, size_t const nbead,
     } else {
       stats_accum(napkin->tde, est_tde(napkin->ensem));
 
+      // TODO No!
+      (void) cstats_accum(napkin->ctde, est_tde(napkin->ensem));
+
       // TODO What a mess. Only works in 1d too.
       for (size_t ipoly = 0; ipoly < napkin->ensem->Nmemb.poly; ++ipoly)
         for (size_t ibead = 0; ibead < napkin->ensem->Nmemb.bead; ++ibead) {
@@ -1104,8 +1101,8 @@ static void simulate(size_t const npoly, size_t const nbead,
 
           // for (size_t idim = 0; idim < napkin->ensem->Nmemb.dim; ++idim)
           d = size_uwrap((size_t)
-              floor(fp_lerp(napkin->ensem->R[ipoly].r[ibead].d[0],
-                  0.0, napkin->ensem->L, 0.0, napkin->ensem->Nmemb.subdiv)),
+              (floor(fp_lerp(napkin->ensem->R[ipoly].r[ibead].d[0],
+                             0.0, napkin->ensem->L, 0.0, napkin->ensem->Nmemb.subdiv))),
               napkin->ensem->Nmemb.subdiv);
 
           ++napkin->P[d];
@@ -1152,6 +1149,7 @@ static void simulate(size_t const npoly, size_t const nbead,
 // TODO Find home for lost souls (half done).
 // TODO Consider different masses for different polymers (done).
 // TODO Histograms (position, pair correlation) for the people (half done).
+// TODO Correlation time estimation (half done).
 // TODO PIGS time!
 
 // Static Constants (N) -------------------------------------------------------
