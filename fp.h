@@ -94,4 +94,30 @@ double fp_wrap(double, double);
 __attribute__ ((__const__))
 double fp_lerp(double, double, double, double, double);
 
+// The statement `b = fp_dbalance(a, r)` sets `b` such that
+//
+// * `b > 0 && b < 1` if `a > r`,
+// * `b > 1` if `a < r` and
+// * `b == 1` otherwise.
+//
+// The function `fp_dbalance` is essentially
+// smooth and continuous everywhere except for the origin.
+// Iterating `fp_dbalance` is faster than `fp_cbalance`,
+// but tends to diverge into bounded oscillations.
+__attribute__ ((__const__))
+double fp_dbalance(double, double);
+
+// The statement `b = fp_cbalance(a, r)` sets `b` such that
+//
+// * `b > 0 && b < 1` if `a > r`,
+// * `b > 1` if `a < r` and
+// * `b == 1` otherwise.
+//
+// The function `fp_cbalance` is essentially
+// smooth and continuous everywhere.
+// Iterating `fp_cbalance` is slower than `fp_dbalance`,
+// but tends to converge quickly.
+__attribute__ ((__const__))
+double fp_cbalance(double, double);
+
 #endif

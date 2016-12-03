@@ -28,8 +28,9 @@
 #define static_assert(p, _) _static_assert((p), __LINE__)
 #endif
 
-// This preprocessor directive is equivalent to `assert`
-// with an extra parameter, which makes it consistent with `static_assert`.
+// The preprocessor directive `dynamic_assert(p, s)`
+// is equivalent to `assert(p)`,
+// which makes it consistent with `static_assert`.
 #ifndef dynamic_assert
 #define dynamic_assert(p, s) assert(p)
 #endif

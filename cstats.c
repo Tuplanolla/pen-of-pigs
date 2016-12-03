@@ -1,4 +1,3 @@
-#include "alloc.h"
 #include "cstats.h"
 #include <gsl/gsl_statistics_double.h>
 #include <math.h>
@@ -26,22 +25,22 @@ void cstats_forget(struct cstats* const cstats) {
 }
 
 struct cstats* cstats_alloc(size_t const M) {
-  alloc_proc alloc = malloc;
+  bool e = false;
 
-  struct cstats* const cstats = alloc(sizeof *cstats);
+  struct cstats* const cstats = malloc(sizeof *cstats);
   if (cstats == NULL)
-    alloc = alloc_err;
+    e = true;
   else {
     cstats->x = malloc(M * sizeof *cstats->x);
     if (cstats == NULL)
-      alloc = alloc_err;
+      e = true;
     else
       cstats->M = M;
   }
 
   cstats_forget(cstats);
 
-  if (alloc == alloc_err) {
+  if (e) {
     cstats_free(cstats);
 
     return NULL;
@@ -94,27 +93,39 @@ double cstats_sd(struct cstats const* const cstats) {
 }
 
 double cstats_autocorr(struct cstats const* const cstats, size_t const k) {
-  double s = 0.0;
+  double S = 0.0;
 
-  for (size_t i = k; i < cstats->N; ++i)
-    s += (cstats->x[i - k] - cstats->M1) * (cstats->x[i] - cstats->M1);
+  switch (cstats->N) {
+    case 0:
+    case 1:
+      return NAN;
+    default:
+      for (size_t i = k; i < cstats->N; ++i)
+        S += (cstats->x[i - k] - cstats->M1) * (cstats->x[i] - cstats->M1);
 
-  return ((double) (cstats->N - 1) / (double) (cstats->N - k)) *
-    (s / cstats->M2);
+      return ((double) (cstats->N - 1) / (double) (cstats->N - k)) *
+        (S / cstats->M2);
+  }
 }
 
 double cstats_corrtime(struct cstats const* const cstats) {
-  double s = 0.0;
+  double S = 0.0;
 
-  for (size_t k = 1; k < cstats->N; ++k) {
-    double const C = cstats_autocorr(cstats, k);
-    if (C < 0.0)
-      break;
+  switch (cstats->N) {
+    case 0:
+    case 1:
+      return NAN;
+    default:
+      for (size_t k = 1; k < cstats->N; ++k) {
+        double const R = cstats_autocorr(cstats, k);
+        if (R < 0.0)
+          break;
 
-    s += C;
+        S += R;
+      }
+
+      return 1.0 + 2.0 * S;
   }
-
-  return 1.0 + 2.0 * s;
 }
 
 double cstats_sem(struct cstats const* const cstats) {
@@ -134,9 +145,8 @@ double cstats_corrsem(struct cstats const* const cstats) {
       return NAN;
     case 1:
       return 0.0;
-    default: {
-        return sqrt(cstats_corrtime(cstats) *
-            cstats_var(cstats) / (double) cstats->N);
-      }
+    default:
+      return sqrt(cstats_corrtime(cstats) *
+          cstats_var(cstats) / (double) cstats->N);
   }
 }

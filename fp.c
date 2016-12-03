@@ -28,12 +28,12 @@ double fp_midpoint(double const x, double const y) {
 }
 
 fp_div_t fp_div(double const x, double const y) {
-  fp_div_t const z = {
+  fp_div_t const qr = {
     .quot = trunc(x / y),
     .rem = fmod(x, y)
   };
 
-  return z;
+  return qr;
 }
 
 double fp_min(double const x, double const y) {
@@ -65,3 +65,12 @@ double fp_lerp(double const x0, double const x1,
     double const x) {
   return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
 }
+
+double fp_dbalance(double const a, double const r) {
+  return 0.5 + a / (a + r);
+}
+
+double fp_cbalance(double const a, double const r) {
+  return 1.0 - exp(-a) + exp(-r);
+}
+
