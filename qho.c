@@ -9,6 +9,7 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_rng.h>
 #include <limits.h>
+#include <math.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -76,9 +77,7 @@ struct ensem {
 struct napkin {
   gsl_rng* rng;
   struct stats* tde;
-  // TODO Iterate all polymers and beads and collect the positions into bins.
   size_t* p;
-  // TODO Iterate all polymer pairs and collect the distances into bins.
   size_t* g;
   void (* accept)(struct napkin*);
   void (* reject)(struct napkin*);
@@ -157,6 +156,7 @@ static double bead_dist(struct ensem const* const ensem,
 
 // Kinetic and Potential Energies (K, V) --------------------------------------
 
+// Kinetic energy within a polymer from one bead to the previous one.
 __attribute__ ((__nonnull__, __pure__))
 static double K_polybead_bw(struct ensem const* const ensem,
     size_t const ipoly, size_t const ibead) {
@@ -179,6 +179,7 @@ static double K_polybead_bw(struct ensem const* const ensem,
   }
 }
 
+// Kinetic energy within a polymer from one bead to the next one.
 // \lambda = \hbar / 2 m, K = x^2 / 4 \lambda \tau^2 = M x^2
 // M = m / 2 \hbar \tau^2
 __attribute__ ((__nonnull__, __pure__))
@@ -203,6 +204,7 @@ static double K_polybead_fw(struct ensem const* const ensem,
   }
 }
 
+// Kinetic energy within a polymer from one bead to its two neighbors.
 __attribute__ ((__nonnull__, __pure__))
 static double K_polybead(struct ensem const* const ensem,
     size_t const ipoly, size_t const ibead) {
@@ -210,6 +212,7 @@ static double K_polybead(struct ensem const* const ensem,
     K_polybead_fw(ensem, ipoly, ibead);
 }
 
+// Kinetic energy within a polymer.
 __attribute__ ((__nonnull__, __pure__))
 static double K_poly(struct ensem const* const ensem,
     size_t const ipoly) {
@@ -221,6 +224,7 @@ static double K_poly(struct ensem const* const ensem,
   return K;
 }
 
+// Kinetic energy.
 __attribute__ ((__nonnull__, __pure__))
 static double K_total(struct ensem const* const ensem) {
   double K = 0.0;
@@ -231,6 +235,7 @@ static double K_total(struct ensem const* const ensem) {
   return K;
 }
 
+// Potential energy between certain beads of all polymers.
 __attribute__ ((__nonnull__, __pure__))
 static double Vint_bead(struct ensem const* const ensem,
     size_t const ibead) {
@@ -244,6 +249,7 @@ static double Vint_bead(struct ensem const* const ensem,
   return V;
 }
 
+// Additional potential energy between either of the ends of all polymers.
 __attribute__ ((__nonnull__, __pure__))
 static double Vend_bead(struct ensem const* const ensem,
     size_t const ibead) {
@@ -267,12 +273,14 @@ static double Vend_bead(struct ensem const* const ensem,
   return V;
 }
 
+// External potential energy for one bead in a polymer.
 __attribute__ ((__nonnull__, __pure__))
 static double Vext_polybead(struct ensem const* const ensem,
     size_t const ipoly, size_t const ibead) {
   return ensem->Vext(ensem, &ensem->R[ipoly].r[ibead]);
 }
 
+// Potential energy for one bead over all polymers.
 __attribute__ ((__nonnull__, __pure__))
 static double V_bead(struct ensem const* const ensem,
     size_t const ibead) {
@@ -284,6 +292,7 @@ static double V_bead(struct ensem const* const ensem,
   return V;
 }
 
+// Potential energy.
 __attribute__ ((__nonnull__, __pure__))
 static double V_total(struct ensem const* const ensem) {
   double V = 0.0;
@@ -296,17 +305,17 @@ static double V_total(struct ensem const* const ensem) {
 
 // Estimators (est) -----------------------------------------------------------
 
-// Thermodynamic energy estimator.
+// Thermodynamic energy estimator for closed polymers.
 // \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
 // \Bigl\langle\frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\Bigr\rangle
 __attribute__ ((__nonnull__, __pure__))
 static double est_tde(struct ensem const* const ensem) {
-  double const E =
-    (double) (ensem->Nmemb.dim * ensem->Nmemb.poly) / (2.0 * ensem->tau);
-  double const K =
-    K_total(ensem) / (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
-  double const V =
-    V_total(ensem) / (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
+  double const E = (double) (ensem->Nmemb.dim * ensem->Nmemb.poly) /
+    (2.0 * ensem->tau);
+  double const K = K_total(ensem) /
+    (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
+  double const V = V_total(ensem) /
+    (double) (ensem->Nmemb.poly * ensem->Nmemb.bead);
 
   return E - K + V;
 }
@@ -357,8 +366,8 @@ static void Rr_rand(struct napkin* const napkin) {
   for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead)
       for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
-        napkin->ensem.R[ipoly].r[ibead].d[idim] =
-          ran_uopen(napkin->rng, napkin->ensem.L);
+        napkin->ensem.R[ipoly].r[ibead].d[idim] = ran_uopen(napkin->rng,
+            napkin->ensem.L);
 }
 
 // Random point initial configuration.
@@ -376,65 +385,62 @@ static void Rr_randpt(struct napkin* const napkin) {
 // Random lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_randlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem.Nmemb.poly, napkin->ensem.Nmemb.dim);
-  double const v = napkin->ensem.L / (double) n;
+  size_t const Nlin = size_cirt(napkin->ensem.Nmemb.poly,
+      napkin->ensem.Nmemb.dim);
+  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly) {
+    size_t i[DIM_MAX];
+    size_hc(ipoly, Nlin, i, napkin->ensem.Nmemb.dim);
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
-      size_t i = ipoly;
-
-      for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim) {
-        size_div_t const z = size_div(i, n);
-
-        napkin->ensem.R[ipoly].r[ibead].d[idim] =
-          (double) z.rem * v + ran_uopen(napkin->rng, v);
-        i = z.quot;
-      }
-    }
+    for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead)
+      for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+        napkin->ensem.R[ipoly].r[ibead].d[idim] = fp_lerp((double) i[idim] +
+            ran_uopen(napkin->rng, 1.0),
+            0.0, Nlin,
+            0.0, napkin->ensem.L);
+  }
 }
 
 // Point lattice initial configuration.
 __attribute__ ((__nonnull__))
 static void Rr_ptlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem.Nmemb.poly, napkin->ensem.Nmemb.dim);
-  double const v = napkin->ensem.L / (double) n;
+  size_t const Nlin = size_cirt(napkin->ensem.Nmemb.poly,
+      napkin->ensem.Nmemb.dim);
+  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly) {
+    size_t i[DIM_MAX];
+    size_hc(ipoly, Nlin, i, napkin->ensem.Nmemb.dim);
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
-      size_t i = ipoly;
-
-      for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim) {
-        size_div_t const z = size_div(i, n);
-
-        napkin->ensem.R[ipoly].r[ibead].d[idim] = (double) z.rem * v;
-        i = z.quot;
-      }
-    }
+    for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead)
+      for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+        napkin->ensem.R[ipoly].r[ibead].d[idim] = fp_lerp((double) i[idim],
+            0.0, Nlin,
+            0.0, napkin->ensem.L);
+  }
 }
 
 // Circle lattice initial configuration.
 // The equations are based on the theory of Lissajous knots.
 __attribute__ ((__nonnull__))
 static void Rr_circlatt(struct napkin* const napkin) {
-  size_t const n = size_cirt(napkin->ensem.Nmemb.poly, napkin->ensem.Nmemb.dim);
-  double const v = napkin->ensem.L / (double) n;
+  size_t const Nlin = size_cirt(napkin->ensem.Nmemb.poly,
+      napkin->ensem.Nmemb.dim);
+  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly) {
+    size_t i[DIM_MAX];
+    size_hc(ipoly, Nlin, i, napkin->ensem.Nmemb.dim);
 
-  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
       double const t = (double) ibead / (double) napkin->ensem.Nmemb.bead;
 
-      size_t i = ipoly;
-
       for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim) {
         double const phi = (double) idim / (double) napkin->ensem.Nmemb.dim;
-        double const y = sin(M_2PI * (t + phi / 2.0)) / 2.0;
+        double const x = sin(M_2PI * (t + phi / 2.0));
 
-        size_div_t const z = size_div(i, n);
-        napkin->ensem.R[ipoly].r[ibead].d[idim] =
-          ((double) z.rem + (y + 1.0) / 2.0) * v;
-        i = z.quot;
+        napkin->ensem.R[ipoly].r[ibead].d[idim] = fp_lerp((double) i[idim] +
+            0.5 + x / 4.0,
+            0.0, Nlin,
+            0.0, napkin->ensem.L);
       }
     }
+  }
 }
 
 // Physical Moves (move) ------------------------------------------------------
@@ -602,6 +608,41 @@ static void choose(struct napkin* const napkin,
   napkin->adjust(napkin);
 }
 
+__attribute__ ((__nonnull__))
+static void prob_accum(struct napkin const* const napkin) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
+      size_t i[DIM_MAX];
+
+      for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+        i[idim] = size_uclamp(
+            (size_t) floor(fp_lerp(napkin->ensem.R[ipoly].r[ibead].d[idim],
+                0.0, (double) napkin->ensem.L,
+                0.0, (double) napkin->ensem.Nmemb.subdiv)),
+            napkin->ensem.Nmemb.subdiv);
+
+      ++napkin->p[size_unhc(napkin->ensem.Nmemb.subdiv, i,
+          napkin->ensem.Nmemb.dim)];
+    }
+}
+
+__attribute__ ((__nonnull__))
+static void paircorr_accum(struct napkin const* const napkin) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
+    for (size_t jpoly = ipoly + 1; jpoly < napkin->ensem.Nmemb.poly; ++jpoly)
+      for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
+        size_t const i = size_uclamp(
+            (size_t) floor(fp_lerp(bead_dist(&napkin->ensem,
+                  &napkin->ensem.R[ipoly].r[ibead],
+                  &napkin->ensem.R[jpoly].r[ibead]),
+                0.0, (double) napkin->ensem.L,
+                0.0, (double) napkin->ensem.Nmemb.subdiv)),
+            napkin->ensem.Nmemb.subdiv);
+
+        ++napkin->g[i];
+      }
+}
+
 // Printing into Data Files (disp) --------------------------------------------
 
 __attribute__ ((__nonnull__))
@@ -681,6 +722,21 @@ static void save_length(struct napkin const* const napkin) {
     err_abort(fclose);
 }
 
+// TODO Urgh!
+__attribute__ ((__nonnull__))
+static void save_length_harder(struct napkin const* const napkin) {
+  char const str[] = "qho-length.data";
+
+  FILE* const fp = fopen(str, "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  (void) fprintf(fp, "%f\n", napkin->ensem.L);
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
 __attribute__ ((__nonnull__))
 static void save_esl(struct napkin const* const napkin) {
   char str[BUFSIZ]; // Always longer than 256 and safe!
@@ -723,26 +779,31 @@ static void save_potential(struct napkin const* const napkin) {
   if (fp == NULL)
     err_abort(fopen);
 
-  double const v = napkin->ensem.L / (double) napkin->ensem.Nmemb.subdiv;
-
-  struct bead r;
-
-  size_t const Nbin = size_pow(napkin->ensem.Nmemb.subdiv + 1,
+  size_t const Npt = size_pow(napkin->ensem.Nmemb.subdiv + 1,
       napkin->ensem.Nmemb.dim);
-  for (size_t ibin = 0; ibin < Nbin; ++ibin) {
-    size_t i = ibin;
 
-    for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim) {
-      size_div_t const z = size_div(i, napkin->ensem.Nmemb.subdiv + 1);
+  struct bead r0;
+  for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+    r0.d[idim] = 0;
 
-      r.d[idim] = (double) z.rem * v;
-      i = z.quot;
-    }
+  for (size_t ipt = 0; ipt < Npt; ++ipt) {
+    size_t i[DIM_MAX];
+    size_hc(ipt, napkin->ensem.Nmemb.subdiv + 1, i, napkin->ensem.Nmemb.dim);
+
+    struct bead r;
+
+    for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+      r.d[idim] = fp_lerp((double) i[idim],
+          0.0, napkin->ensem.Nmemb.subdiv,
+          0.0, napkin->ensem.L);
 
     for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
       (void) fprintf(fp, "%f ", r.d[idim]);
 
-    (void) fprintf(fp, "%f\n", napkin->ensem.Vext(&napkin->ensem, &r));
+    // TODO Unclamp.
+    (void) fprintf(fp, "%f %f\n",
+        napkin->ensem.Vext(&napkin->ensem, &r),
+        fp_clamp(napkin->ensem.Vint(&napkin->ensem, &r0, &r), -8.0, 8.0));
   }
 
   if (fclose(fp) == EOF)
@@ -759,31 +820,54 @@ static void save_probability(struct napkin const* const napkin) {
   if (fp == NULL)
     err_abort(fopen);
 
-  double const v = napkin->ensem.L / (double) napkin->ensem.Nmemb.subdiv;
-
-  struct bead r;
-
   size_t const Nbin = size_pow(napkin->ensem.Nmemb.subdiv,
       napkin->ensem.Nmemb.dim);
+
   size_t N = 0.0;
   for (size_t ibin = 0; ibin < Nbin; ++ibin)
     N += napkin->p[ibin];
-  double const Nv = (double) N * v;
+  double const S = (double) N * napkin->ensem.L;
+
   for (size_t ibin = 0; ibin < Nbin; ++ibin) {
-    size_t i = ibin;
+    size_t i[DIM_MAX];
+    size_hc(ibin, napkin->ensem.Nmemb.subdiv, i, napkin->ensem.Nmemb.dim);
 
-    for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim) {
-      size_div_t const z = size_div(i, napkin->ensem.Nmemb.subdiv + 1);
+    struct bead r;
 
-      // TODO Half-bin offset!
-      r.d[idim] = ((double) z.rem + 0.5) * v;
-      i = z.quot;
-    }
+    for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
+      r.d[idim] = fp_lerp((double) i[idim] + 0.5,
+          0.0, napkin->ensem.Nmemb.subdiv,
+          0.0, napkin->ensem.L);
 
     for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
       (void) fprintf(fp, "%f ", r.d[idim]);
 
-    (void) fprintf(fp, "%f\n", (double) napkin->p[ibin] / Nv);
+    (void) fprintf(fp, "%f\n", (double) napkin->p[ibin] / S);
+  }
+
+  if (fclose(fp) == EOF)
+    err_abort(fclose);
+}
+
+__attribute__ ((__nonnull__))
+static void save_paircorr(struct napkin const* const napkin) {
+  char const str[] = "qho-paircorrelation.data";
+
+  FILE* const fp = fopen(str, "w");
+  if (fp == NULL)
+    err_abort(fopen);
+
+  size_t N = 0.0;
+  for (size_t ibin = 0; ibin < napkin->ensem.Nmemb.subdiv; ++ibin)
+    N += napkin->g[ibin];
+  double const S = (double) N * napkin->ensem.L;
+
+  for (size_t ibin = 0; ibin < napkin->ensem.Nmemb.subdiv; ++ibin) {
+    double const r = fp_lerp((double) ibin + 0.5,
+        0.0, napkin->ensem.Nmemb.subdiv,
+        0.0, napkin->ensem.L);
+
+    (void) fprintf(fp, "%f %f\n", r, (double) napkin->g[ibin] / S);
   }
 
   if (fclose(fp) == EOF)
@@ -794,6 +878,16 @@ static void save_probability(struct napkin const* const napkin) {
 
 __attribute__ ((__nonnull__))
 static void status_line(struct napkin const* const napkin) {
+  (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
+      "E = %f +- %f (kappa = 0)\n",
+      napkin->ensem.istep.thrm, napkin->ensem.istep.prod, napkin->ensem.Nstep.thrm, napkin->ensem.Nstep.prod,
+      100 * (napkin->ensem.istep.thrm + napkin->ensem.istep.prod) /
+      (napkin->ensem.Nstep.thrm + napkin->ensem.Nstep.prod),
+      stats_mean(napkin->tde), stats_sem(napkin->tde));
+}
+
+__attribute__ ((__nonnull__))
+static void slow_line(struct napkin const* const napkin) {
   (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n"
       "E = %f +- %f (kappa = %f)\n",
       napkin->ensem.istep.thrm, napkin->ensem.istep.prod, napkin->ensem.Nstep.thrm, napkin->ensem.Nstep.prod,
@@ -806,12 +900,15 @@ static void status_line(struct napkin const* const napkin) {
 __attribute__ ((__nonnull__))
 static void status_file(struct napkin const* const napkin) {
   save_esl(napkin);
+  save_probability(napkin);
+  save_paircorr(napkin);
 }
 
 // Napkin Management (napkin) -------------------------------------------------
 
 static void napkin_free(struct napkin* const napkin) {
   if (napkin != NULL) {
+    free(napkin->g);
     free(napkin->p);
 
     stats_free(napkin->tde);
@@ -865,6 +962,13 @@ static struct napkin* napkin_alloc(size_t const ndim,
       for (size_t ibin = 0; ibin < Nbin; ++ibin)
         napkin->p[ibin] = 0;
 
+    napkin->g = malloc(nsubdiv * sizeof *napkin->g);
+    if (napkin->g == NULL)
+      e = true;
+    else
+      for (size_t ibin = 0; ibin < nsubdiv; ++ibin)
+        napkin->g[ibin] = 0;
+
     napkin->params.ssm.accepted = 0;
     napkin->params.ssm.rejected = 0;
     napkin->params.ssm.dx = 1.0;
@@ -884,7 +988,15 @@ static struct napkin* napkin_alloc(size_t const ndim,
 
 // More Crap () ---------------------------------------------------------------
 
-static double const epsilon = 1.0;
+__attribute__ ((__const__, __nonnull__))
+static double V_zero(
+    __attribute__ ((__unused__)) struct ensem const* const ensem,
+    __attribute__ ((__unused__)) struct bead const* const r0,
+    __attribute__ ((__unused__)) struct bead const* const r1) {
+  return 0.0;
+}
+
+static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
@@ -895,20 +1007,19 @@ static double V_lj612(struct ensem const* const ensem,
   return 4.0 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
 }
 
+__attribute__ ((__nonnull__, __const__))
+static double Vext_zero(
+    __attribute__ ((__unused__)) struct ensem const* const ensem,
+    __attribute__ ((__unused__)) struct bead const* const r) {
+  return 0.0;
+}
+
 static double const omega = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
 static double Vext_harm(struct ensem const* const ensem,
     struct bead const* const r) {
   return gsl_pow_2(omega) * bead_norm2(ensem, r) / 2.0;
-}
-
-__attribute__ ((__const__, __nonnull__))
-static double V_zero(
-    __attribute__ ((__unused__)) struct ensem const* const ensem,
-    __attribute__ ((__unused__)) struct bead const* const r0,
-    __attribute__ ((__unused__)) struct bead const* const r1) {
-  return 0.0;
 }
 
 static void simulate(size_t const ndim,
@@ -971,6 +1082,7 @@ static void simulate(size_t const ndim,
   Rm_const(napkin, 1.0);
 
   save_length(napkin);
+  save_length_harder(napkin);
   save_beads(napkin);
   save_subdivisions(napkin);
   save_potential(napkin);
@@ -1021,19 +1133,8 @@ static void simulate(size_t const ndim,
     } else {
       (void) stats_accum(napkin->tde, est_tde(&napkin->ensem));
 
-      // TODO What a mess. Only works in 1d too.
-      for (size_t ipoly = 0; ipoly < napkin->ensem.Nmemb.poly; ++ipoly)
-        for (size_t ibead = 0; ibead < napkin->ensem.Nmemb.bead; ++ibead) {
-          size_t d;
-
-          // for (size_t idim = 0; idim < napkin->ensem.Nmemb.dim; ++idim)
-          d = size_uwrap((size_t)
-              (floor(fp_lerp(napkin->ensem.R[ipoly].r[ibead].d[0],
-                             0.0, napkin->ensem.L, 0.0, napkin->ensem.Nmemb.subdiv))),
-              napkin->ensem.Nmemb.subdiv);
-
-          ++napkin->p[d];
-        }
+      prob_accum(napkin);
+      paircorr_accum(napkin);
 
       if (napkin->ensem.Nstep.prodrec * napkin->ensem.istep.prod >
           napkin->ensem.Nstep.prod * napkin->ensem.istep.prodrec) {
@@ -1053,8 +1154,7 @@ static void simulate(size_t const ndim,
   if (fclose(driftfp) == EOF)
     err_abort(fclose);
 
-  save_probability(napkin);
-
+  // slow_line(napkin);
   status_line(napkin);
   status_file(napkin);
 
@@ -1073,12 +1173,12 @@ static void simulate(size_t const ndim,
 // TODO Find home for lost souls (done).
 // TODO Consider different masses for different polymers (done).
 // TODO Correlation time estimation (done).
+// TODO Histograms (position, pair correlation) for the people (done).
 // TODO Abstract generic calculations for qho and He-4 (half done).
-// TODO Histograms (position, pair correlation) for the people (half done).
 // TODO PIGS time (half done)!
 
-#define NDIM ((size_t) 1)
-#define NPOLY ((size_t) 1)
+#define NDIM ((size_t) 2)
+#define NPOLY ((size_t) 2)
 #define NBEAD ((size_t) 32)
 
 #define NSUBDIV ((size_t) (NDIM == 1 ? 256 : NDIM == 2 ? 16 : 4))

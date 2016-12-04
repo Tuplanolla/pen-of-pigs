@@ -75,12 +75,25 @@ double fp_pow(double, double);
 __attribute__ ((__const__))
 double fp_rt(double, double);
 
-// The statement `z = fp_uwrap(x, y)` solves
-// the periodic equation `z == x + n * y` for `z`,
-// where `0 <= z < y` and `n` is some integer.
-// This is analogous to `size_uwrap`.
+// The call `fp_clamp(x, a, b)` returns
+//
+// * `x` if `a <= x < b`,
+// * `a` if `x < a` and
+// * `b` if `x >= b`.
+//
+// This is equivalent to `fp_uclamp(x, b)` when `a == 0`.
 __attribute__ ((__const__))
-double fp_uwrap(double, double);
+double fp_clamp(double, double, double);
+
+// The call `fp_uclamp(x, b)` returns
+//
+// * `x` if `0 <= x < b`,
+// * `0` if `x < 0` and
+// * `b` if `x > b`.
+//
+// This is analogous to `size_uclamp`.
+__attribute__ ((__const__))
+double fp_uclamp(double, double);
 
 // The statement `z = fp_wrap(x, y)` solves
 // the periodic equation `z == x + n * y` for `z`,
@@ -88,11 +101,23 @@ double fp_uwrap(double, double);
 __attribute__ ((__const__))
 double fp_wrap(double, double);
 
-// The statement `y = fp_lerp(x0, x1, y0, y1, x)` solves
+// The statement `z = fp_uwrap(x, y)` solves
+// the periodic equation `z == x + n * y` for `z`,
+// where `0 <= z < y` and `n` is some integer.
+// This is analogous to `size_uwrap`.
+__attribute__ ((__const__))
+double fp_uwrap(double, double);
+
+// The statement `y = fp_lerp(x, x0, x1, y0, y1)` solves
 // the linear interpolation equation
 // `(x - x0) / (x1 - x0) == (y - y0) / (y1 - y0)` for `y`.
 __attribute__ ((__const__))
 double fp_lerp(double, double, double, double, double);
+
+// The statement `y = fp_lorp(x, x0, x1, y0, y1)` is equivalent to
+// `y = log(fp_lerp(exp(x), exp(x0), exp(x1), exp(y0), exp(y1)))`.
+__attribute__ ((__const__))
+double fp_lorp(double, double, double, double, double);
 
 // The statement `b = fp_dbalance(a, r)` sets `b` such that
 //

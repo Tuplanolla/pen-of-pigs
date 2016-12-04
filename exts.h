@@ -42,8 +42,7 @@ static_assert(false, "contradictory debug directives");
 #else
 #endif
 #else
-#ifdef NDEBUG
-#else
+#ifndef NDEBUG
 #define NDEBUG
 #endif
 #endif

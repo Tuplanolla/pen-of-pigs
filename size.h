@@ -95,9 +95,18 @@ void size_hc(size_t, size_t, size_t*, size_t);
 __attribute__ ((__nonnull__, __pure__))
 size_t size_unhc(size_t, size_t const*, size_t);
 
+// The call `size_uclamp(n, k)` returns
+//
+// * `n` if `0 <= n < k` and
+// * `k - 1` if `n >= k`.
+//
+// This is analogous to `fp_uclamp`.
+__attribute__ ((__const__))
+size_t size_uclamp(size_t, size_t);
+
 // The statement `m = size_uwrap(n, k)` solves
-// the periodic equation `m == n - n * k` for `m`,
-// where `0 <= m < k` and `n` is some integer.
+// the periodic equation `m == n - p * k` for `m`,
+// where `0 <= m < k` and `p` is some integer.
 // This is analogous to `fp_uwrap`.
 __attribute__ ((__const__))
 size_t size_uwrap(size_t, size_t);

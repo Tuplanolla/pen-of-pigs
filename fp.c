@@ -52,18 +52,30 @@ double fp_rt(double const x, double const y) {
   return pow(x, 1.0 / y);
 }
 
-double fp_uwrap(double const x, double const y) {
-  return x - y * floor(x / y);
+double fp_clamp(double const x, double const a, double const b) {
+  return x < a ? a : x >= b ? b : x;
+}
+
+double fp_uclamp(double const x, double const b) {
+  return fp_clamp(x, 0, b);
 }
 
 double fp_wrap(double const x, double const y) {
   return x - y * nearbyint(x / y);
 }
 
-double fp_lerp(double const x0, double const x1,
-    double const y0, double const y1,
-    double const x) {
+double fp_uwrap(double const x, double const y) {
+  return x - y * floor(x / y);
+}
+
+double fp_lerp(double const x,
+    double const x0, double const x1, double const y0, double const y1) {
   return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+}
+
+double fp_lorp(double const x,
+    double const x0, double const x1, double const y0, double const y1) {
+  return log(fp_lerp(exp(x), exp(x0), exp(x1), exp(y0), exp(y1)));
 }
 
 double fp_dbalance(double const a, double const r) {
