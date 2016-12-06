@@ -1,40 +1,43 @@
 #! /bin/sh
 
+# This script shows all the plots in the current working directory.
+# The script takes one optional argument, which is either
+# the integer `0` to enable interactive plots
+# that do not update automatically or
+# the positive integer `n` to enable noninteractive plots
+# that update automatically every `n` seconds.
+
+case "$#" in
+  0)
+    t=1
+    ;;
+  1)
+    t="$1"
+    ;;
+  *)
+    echo "Too many arguments." >&2
+    exit 1
+    ;;
+esac
+
 s='EXIT HUP INT QUIT PIPE TERM' && \
+trap wait CONT && \
 d=$(mktemp -d) && \
 trap 'trap - $s && rm -fr "$d" && kill -- "-$$"' $s && \
-t=5 && \
-trap wait CONT && \
 for x in *.gp
 do
   ( y="$d/$(basename "$x")" && \
-    touch "$y" && \
-    t0=0 && \
-    p=0 && \
-    while true
-    do
-      t1="$(stat -c '%Z' "$x")" && \
-      if test "$t1" != "$t0"
+    { echo 'set terminal wxt noraise' && \
+      sed '/^set \(terminal\|output\)/d' "$x" && \
+      if test "$t" -gt 0
       then
-        { echo 'set terminal wxt noraise' && \
-          cat "$x" && \
-          echo "pause $t" && \
-          echo reread
-        } > "$y" && \
-        if test "$p" != 0
-        then kill -- "$p"
-        fi && \
-        gnuplot -p "$y" 2> /dev/null & \
-        p="$!"
-      elif kill -0 "$p" 2> /dev/null
-      then :
+        echo "pause $t" && \
+        echo reread
       else
-        gnuplot -p "$y" 2> /dev/null & \
-        p="$!"
-      fi && \
-      sleep "$t" && \
-      t0="$t1" || exit 1
-    done
+        echo 'pause mouse close'
+      fi
+    } > "$y" && \
+    gnuplot "$y" 2> /dev/null
   ) &
 done && \
 wait

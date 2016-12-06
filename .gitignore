@@ -1,7 +1,7 @@
-*.data
 *.o
 *.tar.gz
 /clang*
 /gcc*
 /he4
 /qho
+/run-*

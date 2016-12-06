@@ -1,5 +1,10 @@
 #! /bin/sh
 
+# This script sends `SIGUSR1` to a process until it terminates.
+# The script takes two arguments, the latter of which is optional.
+# The first argument is the identifier of the process to monitor and
+# the second argument is the number of seconds between each signal.
+
 case "$#" in
   0)
     echo "Too few arguments." >&2
