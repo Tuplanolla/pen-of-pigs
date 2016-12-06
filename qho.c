@@ -39,12 +39,12 @@ static double Vext_harm(struct ensem const* const ensem,
 }
 
 int main(void) {
-  size_t const ndim = 3;
-  size_t const npoly = 3;
-  size_t const nbead = 8;
+  size_t const ndim = 1;
+  size_t const npoly = 1;
+  size_t const nbead = 32;
   size_t const nsubdiv = ndim == 1 ? 256 : ndim == 2 ? 16 : 4;
-  size_t const nthrm = 1 << 14;
-  size_t const nprod = 1 << 18;
+  size_t const nthrm = 1 << 18;
+  size_t const nprod = 1 << 22;
   size_t const nthrmrec = 1 << 4;
   size_t const nprodrec = 1 << 8;
 

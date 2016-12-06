@@ -901,7 +901,7 @@ static bool disp_g(struct napkin const* const napkin, FILE* const fp) {
 
   for (size_t ibin = 0; ibin < Nbin; ++ibin) {
     double const r = fp_lerp((double) ibin + 0.5,
-        0.0, (double) napkin->ensem.Nmemb.subdiv,
+        0.0, (double) Nbin,
         0.0, napkin->ensem.L);
 
     if (fprintf(fp, "%f %f\n", r, (double) napkin->g[ibin] / S) < 0)
@@ -965,11 +965,11 @@ static bool prepare_stuff(struct napkin const* const napkin) {
 
 __attribute__ ((__nonnull__))
 static void show_progress(struct napkin const* const napkin) {
-  (void) printf("E = %f +- %f (kappa = 0)\n",
-      napkin->ensem.istep.thrm, napkin->ensem.istep.prod, napkin->ensem.Nstep.thrm, napkin->ensem.Nstep.prod,
+  (void) printf("i / N = (%zu + %zu) / (%zu + %zu) = %zu %%\n",
+      napkin->ensem.istep.thrm, napkin->ensem.istep.prod,
+      napkin->ensem.Nstep.thrm, napkin->ensem.Nstep.prod,
       100 * (napkin->ensem.istep.thrm + napkin->ensem.istep.prod) /
-      (napkin->ensem.Nstep.thrm + napkin->ensem.Nstep.prod),
-      stats_mean(napkin->tde), stats_sem(napkin->tde));
+      (napkin->ensem.Nstep.thrm + napkin->ensem.Nstep.prod));
 }
 
 __attribute__ ((__nonnull__))

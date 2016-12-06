@@ -1,7 +1,12 @@
+*.aux
+*.eps
+*.log
 *.o
+*.pdf
 *.tar.gz
-/clang*
-/gcc*
+*.tex
+/clang-*
+/gcc-*
 /he4
 /qho
 /run-*

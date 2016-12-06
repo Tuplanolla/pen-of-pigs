@@ -8,12 +8,13 @@ set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$V$'
 unset key
-set xrange [0 - L / 2 : L + L / 2]
-set yrange [0 - L / 2 : L + L / 2]
 set dgrid3d K, K
 set hidden3d
-splot for [i = 3 : 4] \
+set xyplane relative 0.1
+set xrange [0 - L / 2 : L + L / 2]
+set yrange [0 - L / 2 : L + L / 2]
+splot for [i = 0 : 1] \
   for [dx = -L : L : L] for [dy = -L : L : L] \
   'run-latest/pots.data' using \
-  ($1 + dx) : ($2 + dy) : i \
-  with lines linetype 1
+  ($1 + dx) : ($2 + dy) : i + 3 \
+  with lines linetype 2 * i + 1

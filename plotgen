@@ -1,0 +1,26 @@
+#! /bin/sh
+
+# This script creates a minimal LaTeX document for rendering plots.
+# The script takes an arbitrary number of arguments,
+# each of which is the basename of a plot file.
+
+cat <<^D
+\\documentclass{article}
+\\usepackage{graphicx, tikz}
+\\pagestyle{empty}
+\\begin{document}
+^D
+
+for x
+do cat <<^D
+\\begin{figure}
+  \\centering
+  \\input{$x}
+  \\caption{Plot of \\texttt{$x}.}
+\\end{figure}
+^D
+done
+
+cat <<^D
+\\end{document}
+^D

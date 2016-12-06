@@ -7,8 +7,8 @@ set xlabel '$x$'
 set ylabel '$V$'
 unset key
 set xrange [0 - L / 2 : L + L / 2]
-plot for [i = 2 : 3] \
+plot for [i = 0 : 1] \
   for [dx = -L : L : L] \
   'run-latest/pots.data' using \
-  ($1 + dx) : i \
-  with lines linetype 1
+  ($1 + dx) : i + 2 \
+  with lines linetype i + 1
