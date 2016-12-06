@@ -27,40 +27,50 @@ struct stats* stats_alloc(size_t);
 __attribute__ ((__nonnull__))
 bool stats_accum(struct stats*, double);
 
+// The call `stats_n(stats)` returns
+// the number of samples of the statistics `stats`.
+// The time complexity is $O(1)$.
+__attribute__ ((__nonnull__, __pure__))
+double stats_n(struct stats const*);
+
 // The call `stats_mean(stats)` returns
 // the arithmetic mean of the statistics `stats`.
+// The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 double stats_mean(struct stats const*);
 
 // The call `stats_var(stats)` returns the variance of the statistics `stats`.
+// The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 double stats_var(struct stats const*);
 
 // The call `stats_sd(stats)` returns
 // the standard deviation of the statistics `stats`.
+// The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 double stats_sd(struct stats const*);
 
 // The call `stats_sem(stats)` returns
 // the standard error of the mean of the statistics `stats`.
+// The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 double stats_sem(struct stats const*);
 
 // The call `stats_autocorr(stats, k)` returns
 // the estimated lag `k` autocorrelation of the statistics `stats`.
-// This is a demanding operation.
+// The time complexity is $O(n)$ for $n$ samples.
 __attribute__ ((__nonnull__, __pure__))
 double stats_autocorr(struct stats const*, size_t);
 
 // The call `stats_corrtime(stats)` returns
 // the estimated correlation time of the statistics `stats`.
-// This is a very demanding operation.
+// The time complexity is $O(n^2)$ for $n$ samples.
 __attribute__ ((__nonnull__, __pure__))
 double stats_corrtime(struct stats const*);
 
 // The call `stats_corrsem(stats)` returns
 // the correlated standard error of the mean of the statistics `stats`.
-// This is a very demanding operation.
+// The time complexity is $O(n^2)$ for $n$ samples.
 __attribute__ ((__nonnull__, __pure__))
 double stats_corrsem(struct stats const*);
 

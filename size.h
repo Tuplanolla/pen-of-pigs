@@ -5,7 +5,9 @@
 #include <limits.h>
 #include <stddef.h>
 
-#define RT_SIZE_MAX(n) ((size_t) 1 << CHAR_BIT * sizeof (size_t) / (n))
+#define SIZE_MAX_BIT (CHAR_BIT * sizeof (size_t))
+#define SQRT_SIZE_MAX_BIT (SIZE_MAX_BIT / 2)
+#define SQRT_SIZE_MAX ((size_t) 1 << SQRT_SIZE_MAX_BIT)
 
 // The statement `n = size_identity(n)` does not do anything.
 // This is analogous to `fp_identity`.

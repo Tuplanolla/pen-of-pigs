@@ -25,27 +25,28 @@ void stats_forget(struct stats* const stats) {
 }
 
 struct stats* stats_alloc(size_t const M) {
-  bool e = false;
+  bool p = true;
 
   struct stats* const stats = malloc(sizeof *stats);
   if (stats == NULL)
-    e = true;
+    p = false;
   else {
     stats->x = malloc(M * sizeof *stats->x);
     if (stats == NULL)
-      e = true;
+      p = false;
     else
       stats->M = M;
   }
 
   stats_forget(stats);
 
-  if (e) {
+  if (p)
+    return stats;
+  else {
     stats_free(stats);
 
     return NULL;
-  } else
-    return stats;
+  }
 }
 
 bool stats_accum(struct stats* const stats, double const x) {
@@ -59,6 +60,10 @@ bool stats_accum(struct stats* const stats, double const x) {
     return true;
   } else
     return false;
+}
+
+double stats_n(struct stats const* const stats) {
+  return stats->N;
 }
 
 double stats_mean(struct stats const* const stats) {
