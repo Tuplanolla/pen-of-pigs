@@ -1,3 +1,4 @@
+#include "exts.h"
 #include "sim.h"
 #include <gsl/gsl_math.h>
 #include <math.h>
@@ -40,8 +41,7 @@ int main(int const n, char** const xs) {
   double const E = (double) ndim * q / tanh(q * beta);
   (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
 
-  sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
-      true, 10.0, beta, pot_lj612, pot_zero, potext_harm);
-
-  return EXIT_SUCCESS;
+  return sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
+      true, 10.0, beta, pot_lj612, pot_zero, potext_harm) ?
+    EXIT_SUCCESS : EXIT_FAILURE;
 }

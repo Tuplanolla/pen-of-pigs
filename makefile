@@ -35,16 +35,16 @@ run: build
 	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho
 
 check: build
-	cppcheck -I/usr/include --enable=all ./qho.c
+	cppcheck -I/usr/include --enable=all ./sim.c
 	valgrind --leak-check=full --tool=memcheck ./qho
 
 build: he4 qho
 
 clean: shallow-clean
-	# TODO Change this.
-	$(RM) he4 qho
-	$(RM) *.eps *.tex plots.pdf
+	$(RM) he4 qho run-latest
+	# TODO Remove the 2.
 	$(RM) -r run-2*
+	$(RM) *.eps *.tex plots.pdf
 
 shallow-clean:
 	$(RM) *.o
