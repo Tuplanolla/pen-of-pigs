@@ -13,6 +13,7 @@ set hidden3d
 set xyplane relative 0.1
 set xrange [0 - L / 2 : L + L / 2]
 set yrange [0 - L / 2 : L + L / 2]
+set zrange [-50 < * : * < 50]
 splot for [i = 0 : 1] \
   for [dx = -L : L : L] for [dy = -L : L : L] \
   'run-latest/pots.data' using \

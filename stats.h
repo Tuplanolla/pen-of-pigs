@@ -31,7 +31,7 @@ bool stats_accum(struct stats*, double);
 // the number of samples of the statistics `stats`.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
-double stats_n(struct stats const*);
+size_t stats_n(struct stats const*);
 
 // The call `stats_mean(stats)` returns
 // the arithmetic mean of the statistics `stats`.

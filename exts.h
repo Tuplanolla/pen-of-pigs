@@ -1,6 +1,7 @@
 #ifndef EXTS_H
 #define EXTS_H
 
+#include <assert.h>
 #include <stdbool.h>
 
 // This disables GNU extensions if they are unsupported.

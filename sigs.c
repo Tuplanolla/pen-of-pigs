@@ -42,26 +42,30 @@ void sigs_handler(int const signum) {
     SIGS_UNSET;
 }
 
-// This is possible if `signal` provides
-// BSD semantics instead of System V semantics,
+// This is possible with `signal`
+// if it provides BSD semantics instead of System V semantics,
 // but why bother with `signal` when `sigaction` exists?
-__attribute__ ((__unused__))
-static size_t _sigs_register(int const* const sigs, size_t const n) {
+size_t sigs_register(int const* const sigs, size_t const n) {
+  struct sigaction act;
+  act.sa_handler = sigs_handler;
+  sigfillset(&act.sa_mask);
+  act.sa_flags = SA_RESTART;
+
   for (size_t i = 0; i < n; ++i)
-    if (signal(sigs[i], sigs_handler) == SIG_ERR)
+    if (sigaction(sigs[i], &act, NULL) == -1)
       return i;
 
   return SIZE_MAX;
 }
 
-size_t sigs_register(int const* const sigs, size_t const n) {
-  struct sigaction sa;
-  sa.sa_handler = sigs_handler;
-  sigfillset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART;
+size_t sigs_unregister(int const* const sigs, size_t const n) {
+  struct sigaction act;
+  act.sa_handler = SIG_DFL;
+  sigfillset(&act.sa_mask);
+  act.sa_flags = 0;
 
   for (size_t i = 0; i < n; ++i)
-    if (sigaction(sigs[i], &sa, NULL) == -1)
+    if (sigaction(sigs[i], &act, NULL) == -1)
       return i;
 
   return SIZE_MAX;

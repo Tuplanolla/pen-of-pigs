@@ -16,7 +16,8 @@ flags=-DDEBUG -Og -g `cat gcc-$$(./gcc-version | tr . _)-release` \
 	-Wno-error -Wno-fatal-errors -Wno-system-headers \
 	-Wno-c++-compat -Wno-declaration-after-statement \
 	-Wno-traditional -Wno-traditional-conversion \
-	-Wno-aggregate-return -Wno-switch-default -Wno-unsuffixed-float-constants
+	-Wno-switch-default -Wno-unsuffixed-float-constants \
+	-Wno-aggregate-return -Wno-address -Wno-bad-function-cast
 endif
 ifeq ($(CONFIG), release)
 flags=-DNDEBUG -Ofast -s -w
@@ -40,10 +41,14 @@ check: build
 build: he4 qho
 
 clean: shallow-clean
-	$(RM) he4 qho *.eps *.tex plots.pdf
+	# TODO Change this.
+	$(RM) he4 qho
+	$(RM) *.eps *.tex plots.pdf
+	$(RM) -r run-2*
 
 shallow-clean:
-	$(RM) *.o *-eps-converted-to.pdf *.aux *.log
+	$(RM) *.o
+	$(RM) *-eps-converted-to.pdf *.aux *.log
 
 plots.pdf: plots.tex
 	pdflatex $<
@@ -60,7 +65,7 @@ he4: he4.o err.o fp.o ran.o secs.o sigs.o sim.o size.o stats.o
 qho: qho.o err.o fp.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-%.tex: %.gp run-latest
+%.tex: %.gp
 	gnuplot $<
 
 %.o: %.c *.h

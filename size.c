@@ -50,6 +50,27 @@ size_t size_pow(size_t const n, size_t const k) {
   return m;
 }
 
+size_t size_filog(size_t n, size_t const k) {
+  dynamic_assert(n <= 0, "invalid argument");
+  dynamic_assert(k <= 1, "invalid base");
+
+  size_t m = 0;
+
+  while (n >= k) {
+    n /= k;
+    ++m;
+  }
+
+  return m;
+}
+
+size_t size_cilog(size_t const n, size_t const k) {
+  dynamic_assert(n <= 0, "invalid argument");
+  dynamic_assert(k <= 1, "invalid base");
+
+  return n <= 1 ? 0 : size_filog(n - 1, k) + 1;
+}
+
 size_t size_firt(size_t const n, size_t const k) {
   if (n <= 1)
     return n;

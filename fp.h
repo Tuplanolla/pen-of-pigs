@@ -70,6 +70,11 @@ double fp_max(double, double);
 __attribute__ ((__const__))
 double fp_pow(double, double);
 
+// The call `fp_log(x, y)` returns the the base `y` logarithm of `x`.
+// This is analogous to `size_filog` or `size_cilog`.
+__attribute__ ((__const__))
+double fp_log(double, double);
+
 // The call `fp_rt(x, y)` returns the `y`th root of `x`.
 // This is analogous to `size_firt` or `size_cirt`.
 __attribute__ ((__const__))

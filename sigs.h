@@ -19,6 +19,13 @@ void sigs_handler(int);
 // `i` is set the index of the first signal that failed to be registered.
 size_t sigs_register(int const*, size_t);
 
+// The statement `i = sigs_unregister(sigs, n)` tries to restore the default
+// signal handler for each signal in the array `sigs` of length `n`.
+// If the operation is successful, `i` is set to `SIZE_MAX`.
+// Otherwise the registering is stopped at the first failure and
+// `i` is set the index of the first signal that failed to be unregistered.
+size_t sigs_unregister(int const*, size_t);
+
 // This procedure returns `true` if a signal has not been caught.
 // Otherwise `false` is returned.
 bool sigs_unset(void);

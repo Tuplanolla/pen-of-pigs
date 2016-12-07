@@ -23,7 +23,7 @@ esac
 s='EXIT HUP INT QUIT PIPE TERM' && \
 trap wait CONT && \
 d=$(mktemp -d) && \
-trap 'trap - $s && rm -fr "$d" && kill -- "-$$"' $s && \
+trap 'trap - $s && rm -fr "$d" && kill -- "-$$" 2> /dev/null' $s && \
 for x in *.gp
 do
   ( y="$d/$(basename "$x")" && \

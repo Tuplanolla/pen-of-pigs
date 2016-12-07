@@ -48,6 +48,10 @@ double fp_pow(double const x, double const y) {
   return pow(x, y);
 }
 
+double fp_log(double const x, double const y) {
+  return log2(x) / log2(y);
+}
+
 double fp_rt(double const x, double const y) {
   return pow(x, 1.0 / y);
 }
@@ -57,7 +61,7 @@ double fp_clamp(double const x, double const a, double const b) {
 }
 
 double fp_uclamp(double const x, double const b) {
-  return fp_clamp(x, 0, b);
+  return fp_clamp(x, 0.0, b);
 }
 
 double fp_wrap(double const x, double const y) {

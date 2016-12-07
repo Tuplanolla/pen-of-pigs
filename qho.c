@@ -4,26 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-__attribute__ ((__const__, __nonnull__))
-static double V_zero(
-    __attribute__ ((__unused__)) struct ensem const* const ensem,
-    __attribute__ ((__unused__)) struct bead const* const r0,
-    __attribute__ ((__unused__)) struct bead const* const r1) {
-  return 0.0;
-}
-
-__attribute__ ((__nonnull__, __const__))
-static double Vext_zero(
-    __attribute__ ((__unused__)) struct ensem const* const ensem,
-    __attribute__ ((__unused__)) struct bead const* const r) {
-  return 0.0;
-}
-
 static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double V_lj612(struct ensem const* const ensem,
+static double pot_lj612(struct ensem const* const ensem,
     struct bead const* const r0, struct bead const* const r1) {
   double const sigmar2 = gsl_pow_2(sigma) / bead_dist2(ensem, r0, r1);
 
@@ -33,18 +18,18 @@ static double V_lj612(struct ensem const* const ensem,
 static double const omega = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double Vext_harm(struct ensem const* const ensem,
+static double potext_harm(struct ensem const* const ensem,
     struct bead const* const r) {
   return gsl_pow_2(omega) * bead_norm2(ensem, r) / 2.0;
 }
 
-int main(void) {
+int main(int const n, char** const xs) {
   size_t const ndim = 1;
   size_t const npoly = 1;
   size_t const nbead = 32;
   size_t const nsubdiv = ndim == 1 ? 256 : ndim == 2 ? 16 : 4;
-  size_t const nthrm = 1 << 18;
-  size_t const nprod = 1 << 22;
+  size_t const nthrm = 1 << 14;
+  size_t const nprod = 1 << 18;
   size_t const nthrmrec = 1 << 4;
   size_t const nprodrec = 1 << 8;
 
@@ -56,7 +41,7 @@ int main(void) {
   (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
 
   sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
-      true, 10.0, beta, V_lj612, V_zero, Vext_harm);
+      true, 10.0, beta, pot_lj612, pot_zero, potext_harm);
 
   return EXIT_SUCCESS;
 }

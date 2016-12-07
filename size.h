@@ -69,6 +69,18 @@ size_t size_max(size_t, size_t);
 __attribute__ ((__const__))
 size_t size_pow(size_t, size_t);
 
+// The call `size_filog(n, k)` returns the floor
+// of the base `k` logarithm of `n`.
+// This is analogous to `fp_log`.
+__attribute__ ((__const__))
+size_t size_filog(size_t, size_t);
+
+// The call `size_cilog(n, k)` returns the ceiling
+// of the base `k` logarithm of `n`.
+// This is analogous to `fp_log`.
+__attribute__ ((__const__))
+size_t size_cilog(size_t, size_t);
+
 // The call `size_firt(n, k)` returns the floor of the `k`th root of `n`.
 // This is analogous to `fp_rt`.
 // Note that the result may be wrong for large arguments.

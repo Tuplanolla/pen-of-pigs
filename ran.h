@@ -20,4 +20,12 @@ double ran_uopen(gsl_rng*, double);
 __attribute__ ((__nonnull__))
 double ran_open(gsl_rng*, double);
 
+// The call `ran_dateid(rng, pre, buf, n)` uses `rng` to generate
+// an identifier consisting of the prefix `pre`,
+// the current date and a random hexadecimal value,
+// writes it into the buffer `buf` of size `n` and returns `true`.
+// Otherwise `false` is returned.
+__attribute__ ((__nonnull__))
+bool ran_dateid(gsl_rng*, char const*, char*, size_t);
+
 #endif
