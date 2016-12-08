@@ -17,7 +17,7 @@ double ran_open(gsl_rng* const rng, double const x) {
   return (2.0 * gsl_rng_uniform_pos(rng) - 1) * x;
 }
 
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 static unsigned long int filog16(unsigned long int n) {
   size_t m = 0;
 

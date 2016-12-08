@@ -1,4 +1,3 @@
-#include "exts.h"
 #include "sigs.h"
 #include <limits.h>
 #include <signal.h>

@@ -2,8 +2,10 @@ flags=
 
 ifeq ($(CC), clang)
 ifeq ($(CONFIG), debug)
-flags=-DDEBUG -O0 -g -Weverything \
-	-Wno-aggregate-return -Wno-covered-switch-default
+flags=-D_GNU_SOURCE -DDEBUG -O0 -g \
+	-Weverything \
+	-Wno-disabled-macro-expansion \
+	-Wno-aggregate-return -Wno-covered-switch-default -Wno-unused-function
 endif
 ifeq ($(CONFIG), release)
 flags=-DNDEBUG -Ofast -Wl,-s -w
@@ -12,19 +14,19 @@ endif
 
 ifeq ($(CC), gcc)
 ifeq ($(CONFIG), debug)
-flags=-DDEBUG -Og -g `cat gcc-$$(./gcc-version | tr . _)-release` \
+flags=-D_GNU_SOURCE -DDEBUG -Og -g \
+	`cat gcc-$$(./gcc-version | tr . _)-release` \
 	-Wno-error -Wno-fatal-errors -Wno-system-headers \
 	-Wno-c++-compat -Wno-declaration-after-statement \
 	-Wno-traditional -Wno-traditional-conversion \
-	-Wno-switch-default -Wno-unsuffixed-float-constants \
-	-Wno-aggregate-return -Wno-address -Wno-bad-function-cast
+	-Wno-unsuffixed-float-constants \
+	-Wno-address -Wno-bad-function-cast -Wno-long-long \
+	-Wno-aggregate-return -Wno-switch-default -Wno-unused-function
 endif
 ifeq ($(CONFIG), release)
-flags=-DNDEBUG -Ofast -s -w
+flags=-D_GNU_SOURCE -DNDEBUG -Ofast -s -w
 endif
 endif
-
-flags+=-Wno-unused-function -Wno-unused-macros # TODO Remove this.
 
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm `pkg-config --libs gsl`
@@ -33,14 +35,14 @@ plot: plots.pdf
 
 run: build
 	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho \
-	-d 1 -N 1 -M 32 -K 256 -t 16384 -p 262144 -T 16 -P 256 -h 0.1
-	# GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./he4 \
-	-d 1 -N 1 -M 32 -K 256 -t 16384 -p 262144 -T 16 -P 256
+	-d 1 -N 1 -M 32 -K 256 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./he4 \
+	-d 1 -N 1 -M 32 -K 256 -h 4096 -p 32768 -H 16 -P 256
 
 check: build
 	cppcheck -I/usr/include --enable=all *.c *.h
 	valgrind --leak-check=full --tool=memcheck ./qho \
-	-d 2 -N 4 -M 8 -K 16 -t 128 -p 256 -T 32 -P 64 -h 0.1
+	-d 2 -N 4 -M 8 -K 16 -h 128 -p 256 -H 32 -P 64 -T 0.1
 
 build: he4 qho
 
@@ -63,10 +65,10 @@ plots.tex: energy.tex paircorr.tex params.tex \
 	polys-3.tex
 	./plotgen $(basename $^) > $@
 
-he4: he4.o err.o fp.o ran.o secs.o sigs.o sim.o size.o stats.o
+he4: he4.o err.o fp.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-qho: qho.o err.o fp.o ran.o secs.o sigs.o sim.o size.o stats.o
+qho: qho.o err.o fp.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.tex: %.gp

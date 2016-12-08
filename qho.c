@@ -1,56 +1,27 @@
 #include "exts.h"
 #include "lims.h"
+#include "opt.h"
 #include "sim.h"
-#include <errno.h>
 #include <gsl/gsl_math.h>
 #include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 __attribute__ ((__nonnull__))
-static bool qho_parse_n(size_t* const n, size_t const min, size_t const max) {
-  char* endptr;
-  errno = 0;
-  unsigned long long int const k = strtoull(optarg, &endptr, 10);
-  if (errno != 0 || endptr == optarg || *endptr != '\0') {
-    (void) fprintf(stderr, "Argument '%s' is not an integer.\n", optarg);
-    return false;
-  } else if (k > SIZE_MAX || (size_t) k < min || (size_t) k > max) {
-    (void) fprintf(stderr, "Argument '%s' is out of range.\n", optarg);
-    return false;
-  } else
-    *n = (size_t) k;
-
-  return true;
-}
-
-__attribute__ ((__nonnull__))
-static bool qho_parse_x(double* const x, double const min, double const max) {
-  char* endptr;
-  errno = 0;
-  double const y = strtod(optarg, &endptr);
-  if (errno != 0 || endptr == optarg || *endptr != '\0') {
-    (void) fprintf(stderr, "Argument '%s' is not an integer.\n", optarg);
-    return false;
-  } else if (y < min || y > max) {
-    (void) fprintf(stderr, "Argument '%s' is out of range.\n", optarg);
-    return false;
-  } else
-    *x = y;
-
-  return true;
-}
-
-__attribute__ ((__nonnull__))
-static bool qho_parse(int const n, char** const x,
+static bool qho_parse(int const n, char* const* const x,
     size_t* const ndim, size_t* const npoly,
     size_t* const nbead, size_t* const nsubdiv,
     size_t* const nthrm, size_t* const nprod,
     size_t* const nthrmrec, size_t* const nprodrec,
     double* const T) {
+  char const* shortstr = "d:N:M:K:h:p:H:P:T:";
+  char const* const longstr[] = {
+    "ndim", "npoly", "nbead", "nsubdiv",
+    "nthrm", "nprod", "nthrmrec", "nprodrec",
+    "temp"
+  };
+
   *ndim = 1;
   *npoly = 1;
   *nbead = 1;
@@ -62,49 +33,48 @@ static bool qho_parse(int const n, char** const x,
   *T = 1.0;
 
   for ever {
-    int const opt = getopt(n, x, "d:N:M:K:t:p:T:P:h:");
-    if (opt == -1)
+    int const i = opt_parse(n, x, shortstr, longstr);
+    if (i == -1)
       break;
 
-    switch ((char) opt) {
+    switch ((char) i) {
       case 'd':
-        if (!qho_parse_n(ndim, 1, DIM_MAX))
+        if (!opt_parse_size(ndim, 1, DIM_MAX))
           return false;
         break;
       case 'N':
-        if (!qho_parse_n(npoly, 1, POLY_MAX))
+        if (!opt_parse_size(npoly, 1, POLY_MAX))
           return false;
         break;
       case 'M':
-        if (!qho_parse_n(nbead, 1, BEAD_MAX))
+        if (!opt_parse_size(nbead, 1, BEAD_MAX))
           return false;
         break;
       case 'K':
-        if (!qho_parse_n(nsubdiv, 1, SUBDIV_MAX))
-          return false;
-        break;
-      case 't':
-        if (!qho_parse_n(nthrm, 0, STEP_MAX))
-          return false;
-        break;
-      case 'p':
-        if (!qho_parse_n(nprod, 0, STEP_MAX))
-          return false;
-        break;
-      case 'T':
-        if (!qho_parse_n(nthrmrec, 0, STEP_MAX))
-          return false;
-        break;
-      case 'P':
-        if (!qho_parse_n(nprodrec, 0, STEP_MAX))
+        if (!opt_parse_size(nsubdiv, 1, SUBDIV_MAX))
           return false;
         break;
       case 'h':
-        if (!qho_parse_x(T, 0.0, INFINITY))
+        if (!opt_parse_size(nthrm, 0, STEP_MAX))
+          return false;
+        break;
+      case 'p':
+        if (!opt_parse_size(nprod, 0, STEP_MAX))
+          return false;
+        break;
+      case 'H':
+        if (!opt_parse_size(nthrmrec, 0, STEP_MAX))
+          return false;
+        break;
+      case 'P':
+        if (!opt_parse_size(nprodrec, 0, STEP_MAX))
+          return false;
+        break;
+      case 'T':
+        if (!opt_parse_fp(T, 0.0, INFINITY))
           return false;
         break;
       default:
-        (void) fprintf(stderr, "Argument '%s' is invalid.\n", optarg);
         return false;
     }
   }
@@ -144,8 +114,11 @@ int main(int const n, char** const x) {
   double T;
 
   if (!qho_parse(n, x, &ndim, &npoly, &nbead, &nsubdiv,
-        &nthrm, &nprod, &nthrmrec, &nprodrec, &T))
+        &nthrm, &nprod, &nthrmrec, &nprodrec, &T)) {
+    (void) fprintf(stderr, "Failed to parse argument list.\n");
+
     return EXIT_FAILURE;
+  }
 
   double const beta = 1.0 / T;
 
@@ -153,7 +126,12 @@ int main(int const n, char** const x) {
   double const E = (double) ndim * q / tanh(q * beta);
   (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
 
-  return sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
-      false, 10.0, beta, pot_lj612, pot_zero, potext_harm) ?
-    EXIT_SUCCESS : EXIT_FAILURE;
+  if (!sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
+      false, 10.0, beta, pot_zero, pot_zero, potext_harm)) {
+    (void) fprintf(stderr, "Failed to run simulation.\n");
+
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
 }

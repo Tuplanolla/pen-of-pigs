@@ -11,17 +11,17 @@
 
 // The statement `n = size_identity(n)` does not do anything.
 // This is analogous to `fp_identity`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_identity(size_t);
 
 // The call `size_zero(n)` returns `0`.
 // This is analogous to `fp_zero`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_zero(size_t);
 
 // The call `k = size_one(n)` returns `1`.
 // This is analogous to `fp_one`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_one(size_t);
 
 // The call `size_cmp(n, k)` returns
@@ -31,12 +31,12 @@ size_t size_one(size_t);
 // * `0` otherwise.
 //
 // This is analogous to `fp_cmp`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 int size_cmp(size_t, size_t);
 
 // The call `size_midpoint(n, k)` returns the arithmetic mean of `n` and `k`.
 // This is analogous to `fp_midpoint`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_midpoint(size_t, size_t);
 
 // This structure holds the quotient and remainder of a division
@@ -51,46 +51,46 @@ typedef struct {
 // where `m.quot` is the quotient and `m.rem` is the remainder
 // of the expression `n / k`.
 // This is analogous to `div`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_div_t size_div(size_t, size_t);
 
 // The statement `size_min(n, k)` returns the lesser of `n` and `k`.
 // This is analogous to `fmin`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_min(size_t, size_t);
 
 // The statement `size_max(n, k)` returns the greater of `n` and `k`.
 // This is analogous to `fmax`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_max(size_t, size_t);
 
 // The call `size_pow(n, k)` returns `n` raised to the power of `k`.
 // This is analogous to `pow`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_pow(size_t, size_t);
 
 // The call `size_filog(n, k)` returns the floor
 // of the base `k` logarithm of `n`.
 // This is analogous to `fp_log`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_filog(size_t, size_t);
 
 // The call `size_cilog(n, k)` returns the ceiling
 // of the base `k` logarithm of `n`.
 // This is analogous to `fp_log`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_cilog(size_t, size_t);
 
 // The call `size_firt(n, k)` returns the floor of the `k`th root of `n`.
 // This is analogous to `fp_rt`.
 // Note that the result may be wrong for large arguments.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_firt(size_t, size_t);
 
 // The call `size_cirt(n, k)` returns the ceiling of the `k`th root of `n`.
 // This is analogous to `fp_rt`.
 // Note that the result may be wrong for large arguments.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_cirt(size_t, size_t);
 
 // The call `size_hc(ilin, nlin, icub, ndim)` sets `icub`
@@ -115,24 +115,24 @@ size_t size_unhc(size_t, size_t const*, size_t);
 // * `k - 1` if `n >= k`.
 //
 // This is analogous to `fp_uclamp`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_uclamp(size_t, size_t);
 
 // The statement `m = size_uwrap(n, k)` solves
 // the periodic equation `m == n - p * k` for `m`,
 // where `0 <= m < k` and `p` is some integer.
 // This is analogous to `fp_uwrap`.
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_uwrap(size_t, size_t);
 
 // The statement `m = size_uwrap_inc(n, k)` is equivalent
 // to `m = size_uwrap(n + 1, k)` without overflowing (or wrapping).
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_uwrap_inc(size_t, size_t);
 
 // The statement `m = size_uwrap_dec(n, k)` is equivalent
 // to `m = size_uwrap(n - 1, k)` without underflowing (or wrapping).
-__attribute__ ((__const__))
+__attribute__ ((__const__, __pure__))
 size_t size_uwrap_dec(size_t, size_t);
 
 #endif

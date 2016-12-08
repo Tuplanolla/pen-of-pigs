@@ -10,12 +10,12 @@ struct ensem;
 struct napkin;
 
 // The call `pot_zero(e, r0, r1)` always returns zero.
-__attribute__ ((__const__, __nonnull__))
+__attribute__ ((__const__, __nonnull__, __pure__))
 double pot_zero(struct ensem const*,
     struct bead const*, struct bead const*);
 
 // The call `potext_zero(e, r)` always returns zero.
-__attribute__ ((__const__, __nonnull__))
+__attribute__ ((__const__, __nonnull__, __pure__))
 double potext_zero(struct ensem const*, struct bead const*);
 
 // The call `bead_norm2(e, r)` returns the norm squared

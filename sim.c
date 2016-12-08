@@ -20,6 +20,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef _GNU_SOURCE
+#ifdef DEBUG
+#include <fenv.h>
+#endif
+#endif
+
 // This structure contains the numbers of allocated objects by type.
 // The numbers never exceed the statically defined limits
 // `DIM_MAX`, `POLY_MAX`, `BEAD_MAX` and `SUBDIV_MAX`.
@@ -91,14 +97,16 @@ struct napkin {
   } hist;
   struct {
     struct {
-      size_t accepted;
-      size_t rejected;
+      size_t acc;
+      size_t rej;
       double h;
+      size_t stab;
     } ssm;
     struct {
-      size_t accepted;
-      size_t rejected;
+      size_t acc;
+      size_t rej;
       double h;
+      size_t stab;
     } cmd;
   } params;
   struct ensem ensem;
@@ -356,6 +364,16 @@ static void Rend_cycle(struct napkin* const napkin) {
   }
 }
 
+// Point initial configuration.
+static void Rr_pt(struct napkin* const napkin) {
+  for (size_t ipoly = 0; ipoly < napkin->ensem.nmemb.poly; ++ipoly) {
+    for (size_t ibead = 0; ibead < napkin->ensem.nmemb.bead; ++ibead)
+      for (size_t idim = 0; idim < napkin->ensem.nmemb.dim; ++idim)
+        napkin->ensem.R[ipoly].r[ibead].d[idim] = fp_lerp(0.5,
+            0.0, 1.0, 0.0, napkin->ensem.L);
+  }
+}
+
 // Random initial configuration.
 static void Rr_rand(struct napkin* const napkin) {
   for (size_t ipoly = 0; ipoly < napkin->ensem.nmemb.poly; ++ipoly)
@@ -435,7 +453,7 @@ static void Rr_circlatt(struct napkin* const napkin) {
 }
 
 static void move_accept_ss(struct napkin* const napkin) {
-  ++napkin->params.ssm.accepted;
+  ++napkin->params.ssm.acc;
 }
 
 static void move_reject_ss(struct napkin* const napkin) {
@@ -445,13 +463,14 @@ static void move_reject_ss(struct napkin* const napkin) {
   for (size_t idim = 0; idim < napkin->ensem.nmemb.dim; ++idim)
     napkin->ensem.R[ipoly].r[ibead].d[idim] = napkin->hist.ssm.r.d[idim];
 
-  ++napkin->params.ssm.rejected;
+  ++napkin->params.ssm.rej;
 }
 
 static void move_adjust_ss(struct napkin* const napkin) {
-  napkin->params.ssm.h = napkin->params.ssm.h *
-    fp_dbalance((double) napkin->params.ssm.accepted,
-        (double) napkin->params.ssm.rejected);
+  size_t const k = 256;
+
+  napkin->params.ssm.h *= fp_cbalance((double) (napkin->params.ssm.acc + k),
+        (double) (napkin->params.ssm.rej + k));
 }
 
 static void move_ss(struct napkin* const napkin,
@@ -476,7 +495,7 @@ static void move_ss(struct napkin* const napkin,
 }
 
 static void move_accept_cmd(struct napkin* const napkin) {
-  ++napkin->params.cmd.accepted;
+  ++napkin->params.cmd.acc;
 }
 
 static void move_reject_cmd(struct napkin* const napkin) {
@@ -487,13 +506,14 @@ static void move_reject_cmd(struct napkin* const napkin) {
       napkin->ensem.R[ipoly].r[ibead].d[idim] =
         napkin->hist.cmd.R.r[ibead].d[idim];
 
-  ++napkin->params.cmd.rejected;
+  ++napkin->params.cmd.rej;
 }
 
 static void move_adjust_cmd(struct napkin* const napkin) {
-  napkin->params.cmd.h = napkin->params.cmd.h *
-    fp_cbalance((double) napkin->params.cmd.accepted,
-        (double) napkin->params.cmd.rejected);
+  size_t const k = 256;
+
+  napkin->params.cmd.h *= fp_cbalance((double) (napkin->params.cmd.acc + k),
+        (double) (napkin->params.cmd.rej + k));
 }
 
 static void move_cmd(struct napkin* const napkin,
@@ -588,10 +608,10 @@ static double work_cmd(struct napkin* const napkin) {
 
 static void choose(struct napkin* const napkin,
     double const DeltaS) {
-  if (DeltaS <= 0.0 || ran_uopen(napkin->rng, 1.0) <= exp(-DeltaS))
-    napkin->accept(napkin);
-  else
+  if (DeltaS > 0.0 && exp(-DeltaS) < ran_uopen(napkin->rng, 1.0))
     napkin->reject(napkin);
+  else
+    napkin->accept(napkin);
 
   napkin->adjust(napkin);
 }
@@ -761,9 +781,9 @@ static bool disp_energy(struct napkin const* const napkin, FILE* const fp) {
 static bool disp_params(struct napkin const* const napkin, FILE* const fp) {
   if (fprintf(fp, "%zu %zu %zu %zu %f %zu %zu %f\n",
         napkin->ensem.istep.thrm, napkin->ensem.istep.prod,
-        napkin->params.ssm.accepted, napkin->params.ssm.rejected,
+        napkin->params.ssm.acc, napkin->params.ssm.rej,
         napkin->params.ssm.h,
-        napkin->params.cmd.accepted, napkin->params.cmd.rejected,
+        napkin->params.cmd.acc, napkin->params.cmd.rej,
         napkin->params.cmd.h) < 0)
     return false;
 
@@ -839,11 +859,13 @@ static bool disp_paircorr(struct napkin const* const napkin, FILE* const fp) {
 }
 
 static bool disp_progress(struct napkin const* const napkin, FILE* const fp) {
+  size_t const i = napkin->ensem.istep.thrm + napkin->ensem.istep.prod;
+  size_t const n = napkin->ensem.nstep.thrm + napkin->ensem.nstep.prod;
+
   if (fprintf(fp, "i / n = (%zu + %zu) / (%zu + %zu) = %zu %%\n",
       napkin->ensem.istep.thrm, napkin->ensem.istep.prod,
       napkin->ensem.nstep.thrm, napkin->ensem.nstep.prod,
-      100 * (napkin->ensem.istep.thrm + napkin->ensem.istep.prod) /
-      (napkin->ensem.nstep.thrm + napkin->ensem.nstep.prod)) < 0)
+      n == 0 ? 100 : 100 * i / n) < 0)
     return false;
 
   return true;
@@ -963,12 +985,14 @@ static struct napkin* napkin_alloc(size_t const ndim,
       for (size_t ibin = 0; ibin < nbin; ++ibin)
         napkin->g[ibin] = 0.0;
 
-    napkin->params.ssm.accepted = 0;
-    napkin->params.ssm.rejected = 0;
+    // TODO Use `napkin->L / 2`.
+    napkin->params.ssm.acc = 0;
+    napkin->params.ssm.rej = 0;
     napkin->params.ssm.h = 1.0;
 
-    napkin->params.cmd.accepted = 0;
-    napkin->params.cmd.rejected = 0;
+    // TODO Use `napkin->L / 2`.
+    napkin->params.cmd.acc = 0;
+    napkin->params.cmd.rej = 0;
     napkin->params.cmd.h = 1.0;
   }
 
@@ -994,6 +1018,12 @@ bool sim_run(size_t const ndim, size_t const npoly,
       struct bead const*, struct bead const*),
     double (* const Vext)(struct ensem const*, struct bead const*)) {
   err_reset();
+
+#ifdef _GNU_SOURCE
+#ifdef DEBUG
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
+#endif
 
   int const sigs[] = {SIGUSR1, SIGUSR2};
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
@@ -1022,7 +1052,7 @@ bool sim_run(size_t const ndim, size_t const npoly,
   napkin->ensem.Vend = Vend;
   napkin->ensem.Vext = Vext;
 
-  Rr_circlatt(napkin);
+  Rr_pt(napkin);
   Rend_close(napkin);
   // Rend_open(napkin);
   Rm_const(napkin, 1.0);
