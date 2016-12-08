@@ -37,11 +37,12 @@ struct stats* stats_alloc(size_t const N) {
     stats->x = malloc(N * sizeof *stats->x);
     if (stats->x == NULL)
       p = false;
-    else
+    else {
       stats->N = N;
-  }
 
-  stats_forget(stats);
+      stats_forget(stats);
+    }
+  }
 
   if (p)
     return stats;

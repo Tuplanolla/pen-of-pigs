@@ -1,8 +1,8 @@
 #include "exts.h"
 #include "ran.h"
 #include <gsl/gsl_rng.h>
+#include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
 
 size_t ran_index(gsl_rng* const rng, size_t const n) {
@@ -40,11 +40,10 @@ bool ran_dateid(gsl_rng* const rng, char const* const pre,
     return false;
 
   int const k = snprintf(buf, n,
-      "%s-%04d-%02d-%02d-%02d-%02d-%02d-%0*zx", pre,
+      "%s-%04d-%02d-%02d-%02d-%02d-%02d-%0*lx", pre,
       tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
       tm.tm_hour, tm.tm_min, tm.tm_sec,
-      (int) filog16(gsl_rng_max(rng)), gsl_rng_get(rng));
-  gsl_rng_max(rng);
+      1 + (int) filog16(gsl_rng_max(rng)), gsl_rng_get(rng));
   if (k < 0 || (size_t) k >= n)
     return false;
 

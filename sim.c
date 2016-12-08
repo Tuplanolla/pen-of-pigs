@@ -861,7 +861,7 @@ static bool disp_results(struct napkin const* const napkin, FILE* const fp) {
 static bool disp_wrong_results_fast(struct napkin const* const napkin,
     FILE* const fp) {
   if (fprintf(fp, "E = %f +- %f (kappa = %f)\n",
-        stats_mean(napkin->tde), 1000 * stats_sem(napkin->tde), 1000) < 0)
+        stats_mean(napkin->tde), 1000.0 * stats_sem(napkin->tde), 1000.0) < 0)
     return false;
 
   return true;
@@ -983,8 +983,8 @@ static struct napkin* napkin_alloc(size_t const ndim,
 
 // TODO Should probably split napkin allocation and initialization and
 // expose related procedures for doing just that.
-bool sim_run(size_t const ndim, size_t const npoly, size_t const nbead,
-    size_t const nsubdiv,
+bool sim_run(size_t const ndim, size_t const npoly,
+    size_t const nbead, size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
     bool const periodic, double const L, double const beta,
@@ -1013,15 +1013,6 @@ bool sim_run(size_t const ndim, size_t const npoly, size_t const nbead,
       nthrm, nprod, nthrmrec, nprodrec);
   if (napkin == NULL)
     err_abort(napkin_alloc);
-
-#ifdef DEBUG
-
-  napkin->ensem.nstep.thrm = 1;
-  napkin->ensem.nstep.prod = 1;
-  napkin->ensem.nstep.thrmrec = 1;
-  napkin->ensem.nstep.prodrec = 1;
-
-#endif
 
   napkin->ensem.periodic = periodic;
   napkin->ensem.L = L;
