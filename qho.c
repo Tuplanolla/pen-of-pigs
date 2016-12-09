@@ -13,7 +13,7 @@ static double const sigma = 1.0;
 __attribute__ ((__nonnull__, __pure__))
 static double sim_pot_lj612(struct ensem const* const ensem,
     struct bead const* const r0, struct bead const* const r1) {
-  double const sigmar2 = gsl_pow_2(sigma) / bead_dist2(ensem, r0, r1);
+  double const sigmar2 = gsl_pow_2(sigma) / sim_dist2(ensem, r0, r1);
 
   return 4.0 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
 }
@@ -23,7 +23,7 @@ static double const omega = 1.0;
 __attribute__ ((__nonnull__, __pure__))
 static double sim_potext_harm(struct ensem const* const ensem,
     struct bead const* const r) {
-  return gsl_pow_2(omega) * bead_norm2(ensem, r) / 2.0;
+  return gsl_pow_2(omega) * sim_norm2(ensem, r) / 2.0;
 }
 
 __attribute__ ((__nonnull__))
@@ -100,24 +100,24 @@ int main(int const n, char** const x) {
   double const E = (double) ndim * q / tanh(q * beta);
   (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
 
-  struct napkin* const nap = napkin_alloc(ndim, npoly, nbead, nsubdiv,
+  struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
       10.0, 1.0, beta);
-  if (nap == NULL) {
+  if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 
     return EXIT_FAILURE;
   }
 
-  sim_set_potext(sim_get_ensem(nap), sim_potext_harm);
+  sim_set_potext(sim_get_ensem(sim), sim_potext_harm);
 
-  if (!sim_run(nap)) {
+  if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");
 
     return EXIT_FAILURE;
   }
 
-  napkin_free(nap);
+  sim_free(sim);
 
   return EXIT_SUCCESS;
 }

@@ -13,7 +13,7 @@ static double const sigma = 1.0;
 __attribute__ ((__nonnull__, __pure__))
 static double sim_pot_lj612(struct ensem const* const ensem,
     struct bead const* const r0, struct bead const* const r1) {
-  double const d = bead_dist2(ensem, r0, r1);
+  double const d = sim_dist2(ensem, r0, r1);
 
   if (d == 0.0)
     return INFINITY;
@@ -92,26 +92,26 @@ int main(int const n, char** const x) {
     return EXIT_FAILURE;
   }
 
-  struct napkin* const nap = napkin_alloc(ndim, npoly, nbead, nsubdiv,
+  struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
       1.0, 1.0, 100.0);
-  if (nap == NULL) {
+  if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 
     return EXIT_FAILURE;
   }
 
-  sim_periodic(sim_get_ensem(nap), true);
-  sim_set_potint(sim_get_ensem(nap), sim_pot_lj612);
-  sim_place_lattice(nap, sim_placer_tinyuk);
+  sim_periodic(sim_get_ensem(sim), true);
+  sim_set_potint(sim_get_ensem(sim), sim_pot_lj612);
+  sim_place_lattice(sim, sim_placer_tinyuk);
 
-  if (!sim_run(nap)) {
+  if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");
 
     return EXIT_FAILURE;
   }
 
-  napkin_free(nap);
+  sim_free(sim);
 
   return EXIT_SUCCESS;
 }
