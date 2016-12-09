@@ -14,15 +14,15 @@ double ran_uopen(gsl_rng* const rng, double const x) {
 }
 
 double ran_open(gsl_rng* const rng, double const x) {
-  return (2.0 * gsl_rng_uniform_pos(rng) - 1) * x;
+  return (2.0 * gsl_rng_uniform_pos(rng) - 1.0) * x;
 }
 
 __attribute__ ((__const__, __pure__))
 static unsigned long int filog16(unsigned long int n) {
   size_t m = 0;
 
-  while (n >= 0x10) {
-    n /= 0x10;
+  while (n >= 16) {
+    n /= 16;
     ++m;
   }
 

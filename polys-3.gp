@@ -47,6 +47,12 @@ if (periodic) {
   set xrange [-L / 2.0 : L / 2.0]
   set yrange [-L / 2.0 : L / 2.0]
   set zrange [-L / 2.0 : L / 2.0]
+  unset object 1
+  unset object 2
+  unset object 3
+  unset object 4
+  unset object 5
+  unset object 6
   splot 'run-latest/polys.data' using 2 : 3 : 4 every ::0::0 \
     with points linetype 1 pointtype 7, \
     'run-latest/polys.data' using \

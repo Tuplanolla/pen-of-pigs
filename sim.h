@@ -6,18 +6,17 @@
 #include <stdio.h>
 
 struct bead;
-struct poly;
 struct ensem;
 struct napkin;
 
-// The call `pot_zero(ensem, r0, r1)` always returns zero.
+// The call `sim_pot_zero(ensem, r0, r1)` always returns zero.
 __attribute__ ((__const__, __nonnull__, __pure__))
-double pot_zero(struct ensem const*,
+double sim_pot_zero(struct ensem const*,
     struct bead const*, struct bead const*);
 
-// The call `potext_zero(ensem, r)` always returns zero.
+// The call `sim_potext_zero(ensem, r)` always returns zero.
 __attribute__ ((__const__, __nonnull__, __pure__))
-double potext_zero(struct ensem const*, struct bead const*);
+double sim_potext_zero(struct ensem const*, struct bead const*);
 
 // The call `bead_norm2(ensem, r)` returns the norm squared
 // of `r` according to the minimum image convention.
@@ -50,170 +49,238 @@ struct ensem* sim_get_ensem(struct napkin*);
 __attribute__ ((__nonnull__))
 void sim_periodic(struct ensem*, bool);
 
-// The call `sim_potint(ens, f)` sets `f`
+typedef double (* sim_pot)(struct ensem const*,
+    struct bead const*, struct bead const*);
+
+typedef double (* sim_potext)(struct ensem const*, struct bead const*);
+
+// The call `sim_set_potint(ens, f)` sets `f`
 // as the internal (polymer-to-polymer) potential of the ensemble `ens`.
 __attribute__ ((__nonnull__))
-void sim_potint(struct ensem*,
-    double (*)(struct ensem const*, struct bead const*, struct bead const*));
+void sim_set_potint(struct ensem*, sim_pot);
 
-// The call `sim_potend(ens, f)` sets `f`
+// The call `sim_set_potend(ens, f)` sets `f`
 // as the additional (end-to-end) potential of the ensemble `ens`.
 __attribute__ ((__nonnull__))
-void sim_potend(struct ensem*,
-    double (*)(struct ensem const*, struct bead const*, struct bead const*));
+void sim_set_potend(struct ensem*, sim_pot);
 
-// The call `sim_potext(ens, f)` sets `f`
+// The call `sim_set_potext(ens, f)` sets `f`
 // as the external (bead-to-origin) potential of the ensemble `ens`.
 __attribute__ ((__nonnull__))
-void sim_potext(struct ensem*,
-    double (*)(struct ensem const*, struct bead const*));
+void sim_set_potext(struct ensem*, sim_potext);
 
 // TODO Organize this mess.
 
 __attribute__ ((__nonnull__, __pure__))
-static double K_polybead_bw(struct ensem const*, size_t, size_t);
+static double sim_kin_polybead_bw(struct ensem const*, size_t, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double K_polybead_fw(struct ensem const*, size_t, size_t);
+static double sim_kin_polybead_fw(struct ensem const*, size_t, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double K_polybead(struct ensem const*, size_t, size_t);
+static double sim_kin_polybead(struct ensem const*, size_t, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double K_poly(struct ensem const*, size_t);
+static double sim_kin_poly(struct ensem const*, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double K_total(struct ensem const*);
+static double sim_kin_total(struct ensem const*);
+
 __attribute__ ((__nonnull__, __pure__))
-static double Vint_bead(struct ensem const*, size_t);
+static double sim_potint_bead(struct ensem const*, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double Vend_bead(struct ensem const*, size_t);
+static double sim_potend_bead(struct ensem const*, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double Vext_polybead(struct ensem const*, size_t, size_t);
+static double sim_potext_polybead(struct ensem const*, size_t, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double Vext_bead(struct ensem const*, size_t);
+static double sim_potext_bead(struct ensem const*, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double V_bead(struct ensem const*, size_t);
+static double sim_pot_bead(struct ensem const*, size_t);
+
 __attribute__ ((__nonnull__, __pure__))
-static double V_total(struct ensem const*);
+static double sim_pot_total(struct ensem const*);
 
 __attribute__ ((__nonnull__, __pure__))
 static double est_pimc_tde(struct ensem const*);
+
 __attribute__ ((__nonnull__, __pure__))
 static double est_pigs_crap(struct ensem const*);
+
 __attribute__ ((__nonnull__, __pure__))
 static double est_pigs_tde(struct ensem const*);
 
 __attribute__ ((__nonnull__))
-void Rm_const(struct napkin*, double);
-__attribute__ ((__nonnull__))
-void Rend_close(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rend_open(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rend_cycle(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_pt(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_rand(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_randpt(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_randlatt(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_ptlatt(struct napkin*);
-__attribute__ ((__nonnull__))
-void Rr_circlatt(struct napkin*);
+void sim_mass_const(struct napkin* const nap, double const m);
 
 __attribute__ ((__nonnull__))
-static void move_accept_ss(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_reject_ss(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_adjust_ss(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_ss(struct napkin*, size_t, size_t);
-__attribute__ ((__nonnull__))
-static void move_accept_cmd(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_reject_cmd(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_adjust_cmd(struct napkin*);
-__attribute__ ((__nonnull__))
-static void move_cmd(struct napkin*, size_t);
-
-__attribute__ ((__noreturn__))
-static void move_accept_bisect(struct napkin*);
-__attribute__ ((__noreturn__))
-static void move_reject_bisect(struct napkin*);
-__attribute__ ((__noreturn__))
-static void move_bisect(struct napkin*, size_t, size_t);
-__attribute__ ((__noreturn__))
-static void move_accept_swap(struct napkin*);
-__attribute__ ((__noreturn__))
-static void move_reject_swap(struct napkin*);
-__attribute__ ((__noreturn__))
-static void move_swap(struct napkin*, size_t, size_t);
+void sim_perm_close(struct napkin* const nap);
 
 __attribute__ ((__nonnull__))
-static double work_ss(struct napkin*);
-__attribute__ ((__nonnull__))
-static double work_cmd(struct napkin*);
+void sim_perm_open(struct napkin* const nap);
 
 __attribute__ ((__nonnull__))
-static void choose(struct napkin*, double);
+void sim_perm_cycle(struct napkin* const nap);
+
+typedef void (* sim_placer)(struct napkin*,
+    size_t, struct bead const*, double);
+
+__attribute__ ((__nonnull__))
+void sim_placer_point(struct napkin*, size_t, struct bead const*, double);
+
+__attribute__ ((__nonnull__))
+void sim_placer_random(struct napkin*, size_t, struct bead const*, double);
+
+__attribute__ ((__nonnull__))
+void sim_placer_unknot(struct napkin*, size_t, struct bead const*, double);
+
+__attribute__ ((__nonnull__))
+void sim_placer_tinyuk(struct napkin*, size_t, struct bead const*, double);
+
+__attribute__ ((__nonnull__))
+void sim_place_point(struct napkin*, sim_placer);
+
+__attribute__ ((__nonnull__))
+void sim_place_random(struct napkin*, sim_placer);
+
+__attribute__ ((__nonnull__))
+void sim_place_lattice(struct napkin*, sim_placer);
+
+__attribute__ ((__nonnull__))
+void sim_move_accept_ss(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_reject_ss(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_adjust_ss(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_ss(struct napkin*, size_t, size_t);
+
+__attribute__ ((__nonnull__))
+void sim_move_accept_cmd(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_reject_cmd(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_adjust_cmd(struct napkin*);
+
+__attribute__ ((__nonnull__))
+void sim_move_cmd(struct napkin*, size_t);
+
+__attribute__ ((__noreturn__))
+void sim_move_accept_bisect(struct napkin*);
+
+__attribute__ ((__noreturn__))
+void sim_move_reject_bisect(struct napkin*);
+
+__attribute__ ((__noreturn__))
+void sim_move_bisect(struct napkin*, size_t, size_t);
+
+__attribute__ ((__noreturn__))
+void sim_move_accept_swap(struct napkin*);
+
+__attribute__ ((__noreturn__))
+void sim_move_reject_swap(struct napkin*);
+
+__attribute__ ((__noreturn__))
+void sim_move_swap(struct napkin*, size_t, size_t);
+
+typedef double (* sim_proposer)(struct napkin*);
+
+__attribute__ ((__nonnull__))
+double sim_propose_ss(struct napkin*);
+
+__attribute__ ((__nonnull__))
+double sim_propose_cmd(struct napkin*);
+
+typedef void (* sim_decider)(struct napkin*);
+
+__attribute__ ((__nonnull__))
+static void decide(struct napkin*, double);
 
 __attribute__ ((__nonnull__))
 static void posdist_accum(struct napkin const*);
+
 __attribute__ ((__nonnull__))
 static void paircorr_accum(struct napkin const*);
 
 __attribute__ ((__nonnull__))
-static bool res_close(struct napkin const*, FILE*);
-__attribute__ ((__nonnull__))
-static FILE* res_open(struct napkin const*, char const*);
-__attribute__ ((__nonnull__))
-static bool res_use(struct napkin const*, char const*,
-    bool (*)(struct napkin const*, FILE*));
+static void ensem_extents(struct ensem const*, double*, double*);
+
+typedef double (* sim_printer)(struct napkin const*, FILE*);
 
 __attribute__ ((__nonnull__))
-static bool disp_length(struct napkin const*, FILE*);
+static bool res_close(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_periodic(struct napkin const*, FILE*);
+static FILE* res_open(struct napkin const*, char const*);
+
 __attribute__ ((__nonnull__))
-static bool disp_pots(struct napkin const*, FILE*);
+static bool res_print(struct napkin const*, char const*, sim_printer);
+
 __attribute__ ((__nonnull__))
-static bool disp_ndim(struct napkin const*, FILE*);
+static bool print_length(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_npoly(struct napkin const*, FILE*);
+static bool print_periodic(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_nbead(struct napkin const*, FILE*);
+static bool print_pots(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_nsubdiv(struct napkin const*, FILE*);
+static bool print_ndim(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_energy(struct napkin const*, FILE*);
+static bool print_npoly(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_energy_corrtime(struct napkin const*, FILE*);
+static bool print_nbead(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_params(struct napkin const*, FILE*);
+static bool print_nsubdiv(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static void ensem_extents(struct ensem const*, double*, double*);
+static bool print_energy(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_posdist(struct napkin const*, FILE*);
+static bool print_energy_corrtime(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_paircorr(struct napkin const*, FILE*);
+static bool print_params(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_polys1(struct napkin const*, FILE*, size_t, size_t, size_t);
+static bool print_posdist(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_polys(struct napkin const*, FILE*);
+static bool print_paircorr(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_progress(struct napkin const*, FILE*);
+static bool print_polys1(struct napkin const*, FILE*, size_t, size_t, size_t);
+
 __attribute__ ((__nonnull__))
-static bool disp_results(struct napkin const*, FILE*);
+static bool print_polys(struct napkin const*, FILE*);
+
 __attribute__ ((__nonnull__))
-static bool disp_wrong_results_fast(struct napkin const*, FILE*);
+static bool print_progress(struct napkin const*, FILE*);
+
+__attribute__ ((__nonnull__))
+static bool print_results(struct napkin const*, FILE*);
+
+__attribute__ ((__nonnull__))
+static bool print_wrong_results_fast(struct napkin const*, FILE*);
 
 __attribute__ ((__nonnull__))
 static bool prepare_save(struct napkin const*);
 
 __attribute__ ((__nonnull__))
 static bool save_const(struct napkin const*);
+
 __attribute__ ((__nonnull__))
 static bool save_mut(struct napkin const*);
 

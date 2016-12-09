@@ -35,7 +35,9 @@ plot: plots.pdf
 
 run: build
 	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho \
-	-d 1 -N 1 -M 32 -K 256 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
+	-d 1 -N 1 -M 32 -K 16 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
+	# GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho \
+	# -d 2 -N 16 -M 8 -K 16 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
 	# GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./he4 \
 	# -d 1 -N 1 -M 32 -K 256 -h 4096 -p 32768 -H 16 -P 256 -L 10.0
 

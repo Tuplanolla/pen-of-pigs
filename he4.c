@@ -11,7 +11,7 @@ static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double pot_lj612(struct ensem const* const ensem,
+static double sim_pot_lj612(struct ensem const* const ensem,
     struct bead const* const r0, struct bead const* const r1) {
   double const d = bead_dist2(ensem, r0, r1);
 
@@ -102,8 +102,8 @@ int main(int const n, char** const x) {
   }
 
   sim_periodic(sim_get_ensem(nap), true);
-  sim_potint(sim_get_ensem(nap), pot_lj612);
-  Rr_circlatt(nap);
+  sim_set_potint(sim_get_ensem(nap), sim_pot_lj612);
+  sim_place_lattice(nap, sim_placer_tinyuk);
 
   if (!sim_run(nap)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

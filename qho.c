@@ -11,7 +11,7 @@ static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double pot_lj612(struct ensem const* const ensem,
+static double sim_pot_lj612(struct ensem const* const ensem,
     struct bead const* const r0, struct bead const* const r1) {
   double const sigmar2 = gsl_pow_2(sigma) / bead_dist2(ensem, r0, r1);
 
@@ -21,7 +21,7 @@ static double pot_lj612(struct ensem const* const ensem,
 static double const omega = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double potext_harm(struct ensem const* const ensem,
+static double sim_potext_harm(struct ensem const* const ensem,
     struct bead const* const r) {
   return gsl_pow_2(omega) * bead_norm2(ensem, r) / 2.0;
 }
@@ -109,7 +109,7 @@ int main(int const n, char** const x) {
     return EXIT_FAILURE;
   }
 
-  sim_potext(sim_get_ensem(nap), potext_harm);
+  sim_set_potext(sim_get_ensem(nap), sim_potext_harm);
 
   if (!sim_run(nap)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

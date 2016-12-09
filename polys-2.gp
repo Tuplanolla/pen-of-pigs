@@ -32,6 +32,7 @@ if (periodic) {
   dfy(i, x, y) = y1 - y2
   set xrange [-L / 2.0 : L / 2.0]
   set yrange [-L / 2.0 : L / 2.0]
+  unset object 1
   plot 'run-latest/polys.data' using 2 : 3 every ::0::0 \
     with points linetype 1 pointtype 7, \
     'run-latest/polys.data' using \
