@@ -4,77 +4,8 @@
 #include "sim.h"
 #include <gsl/gsl_math.h>
 #include <math.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-__attribute__ ((__nonnull__))
-static bool he4_parse(int const n, char* const* const x,
-    size_t* const ndim, size_t* const npoly,
-    size_t* const nbead, size_t* const nsubdiv,
-    size_t* const nthrm, size_t* const nprod,
-    size_t* const nthrmrec, size_t* const nprodrec) {
-  char const* shortstr = "d:N:M:K:h:p:H:P:";
-  char const* const longstr[] = {
-    "ndim", "npoly", "nbead", "nsubdiv",
-    "nthrm", "nprod", "nthrmrec", "nprodrec"
-  };
-
-  *ndim = 1;
-  *npoly = 1;
-  *nbead = 1;
-  *nsubdiv = 1;
-  *nthrm = 0;
-  *nprod = 0;
-  *nthrmrec = 0;
-  *nprodrec = 0;
-
-  for ever {
-    int const i = opt_parse(n, x, shortstr, longstr);
-    if (i == -1)
-      break;
-
-    switch ((char) i) {
-      case 'd':
-        if (!opt_parse_size(ndim, 1, DIM_MAX))
-          return false;
-        break;
-      case 'N':
-        if (!opt_parse_size(npoly, 1, POLY_MAX))
-          return false;
-        break;
-      case 'M':
-        if (!opt_parse_size(nbead, 1, BEAD_MAX))
-          return false;
-        break;
-      case 'K':
-        if (!opt_parse_size(nsubdiv, 1, SUBDIV_MAX))
-          return false;
-        break;
-      case 'h':
-        if (!opt_parse_size(nthrm, 0, STEP_MAX))
-          return false;
-        break;
-      case 'p':
-        if (!opt_parse_size(nprod, 0, STEP_MAX))
-          return false;
-        break;
-      case 'H':
-        if (!opt_parse_size(nthrmrec, 0, STEP_MAX))
-          return false;
-        break;
-      case 'P':
-        if (!opt_parse_size(nprodrec, 0, STEP_MAX))
-          return false;
-        break;
-      default:
-        return false;
-    }
-  }
-
-  return true;
-}
 
 static double const epsilon = 4.0;
 static double const sigma = 1.0;
@@ -93,29 +24,94 @@ static double pot_lj612(struct ensem const* const ensem,
   }
 }
 
+__attribute__ ((__nonnull__))
 int main(int const n, char** const x) {
-  size_t ndim;
-  size_t npoly;
-  size_t nbead;
-  size_t nsubdiv;
-  size_t nthrm;
-  size_t nprod;
-  size_t nthrmrec;
-  size_t nprodrec;
+  char const* const shortstr = "d:N:M:K:h:p:H:P:L:";
+  char const* const longstr[] = {
+    "ndim", "npoly", "nbead", "nsubdiv",
+    "nthrm", "nprod", "nthrmrec", "nprodrec",
+    "length"
+  };
 
-  if (!he4_parse(n, x, &ndim, &npoly, &nbead, &nsubdiv,
-        &nthrm, &nprod, &nthrmrec, &nprodrec)) {
+  size_t ndim = 1;
+  size_t npoly = 1;
+  size_t nbead = 1;
+  size_t nsubdiv = 1;
+  size_t nthrm = 0;
+  size_t nprod = 0;
+  size_t nthrmrec = 0;
+  size_t nprodrec = 0;
+  double L = 1.0;
+
+  for ever {
+    int const i = opt_parse(n, x, shortstr, longstr);
+    if (i == -1)
+      break;
+
+    switch ((char) i) {
+      case 'd':
+        if (opt_parse_size(&ndim, 1, DIM_MAX))
+          continue;
+        break;
+      case 'N':
+        if (opt_parse_size(&npoly, 1, POLY_MAX))
+          continue;
+        break;
+      case 'M':
+        if (opt_parse_size(&nbead, 1, BEAD_MAX))
+          continue;
+        break;
+      case 'K':
+        if (opt_parse_size(&nsubdiv, 1, SUBDIV_MAX))
+          continue;
+        break;
+      case 'h':
+        if (opt_parse_size(&nthrm, 0, STEP_MAX))
+          continue;
+        break;
+      case 'p':
+        if (opt_parse_size(&nprod, 0, STEP_MAX))
+          continue;
+        break;
+      case 'H':
+        if (opt_parse_size(&nthrmrec, 0, STEP_MAX))
+          continue;
+        break;
+      case 'P':
+        if (opt_parse_size(&nprodrec, 0, STEP_MAX))
+          continue;
+        break;
+      case 'L':
+        if (opt_parse_fp(&L, 0.0, INFINITY))
+          continue;
+        break;
+    }
+
     (void) fprintf(stderr, "Failed to parse argument list.\n");
 
     return EXIT_FAILURE;
   }
 
-  if (!sim_run(ndim, npoly, nbead, nsubdiv, nthrm, nprod, nthrmrec, nprodrec,
-      true, 10.0, 1e+3, pot_lj612, pot_zero, potext_zero)) {
+  struct napkin* const nap = napkin_alloc(ndim, npoly, nbead, nsubdiv,
+      nthrm, nprod, nthrmrec, nprodrec,
+      1.0, 1.0, 100.0);
+  if (nap == NULL) {
+    (void) fprintf(stderr, "Failed to allocate memory.\n");
+
+    return EXIT_FAILURE;
+  }
+
+  sim_periodic(sim_get_ensem(nap), true);
+  sim_potint(sim_get_ensem(nap), pot_lj612);
+  Rr_circlatt(nap);
+
+  if (!sim_run(nap)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");
 
     return EXIT_FAILURE;
   }
+
+  napkin_free(nap);
 
   return EXIT_SUCCESS;
 }

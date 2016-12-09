@@ -6,49 +6,66 @@
 #include <stdio.h>
 
 struct bead;
+struct poly;
 struct ensem;
 struct napkin;
 
-// The call `pot_zero(e, r0, r1)` always returns zero.
+// The call `pot_zero(ensem, r0, r1)` always returns zero.
 __attribute__ ((__const__, __nonnull__, __pure__))
 double pot_zero(struct ensem const*,
     struct bead const*, struct bead const*);
 
-// The call `potext_zero(e, r)` always returns zero.
+// The call `potext_zero(ensem, r)` always returns zero.
 __attribute__ ((__const__, __nonnull__, __pure__))
 double potext_zero(struct ensem const*, struct bead const*);
 
-// The call `bead_norm2(e, r)` returns the norm squared
+// The call `bead_norm2(ensem, r)` returns the norm squared
 // of `r` according to the minimum image convention.
-// This is equivalent to `bead_dist2(e, z, r)`, where `z` is the origin.
+// This is equivalent to `bead_dist2(ensem, z, r)`, where `z` is the origin.
 __attribute__ ((__nonnull__, __pure__))
 double bead_norm2(struct ensem const*, struct bead const*);
 
-// The call `bead_norm(e, r)` returns the norm
+// The call `bead_norm(ensem, r)` returns the norm
 // of `r` according to the minimum image convention.
-// This is equivalent to `sqrt(bead_norm2(e, r))`.
+// This is equivalent to `sqrt(bead_norm2(ensem, r))`.
 __attribute__ ((__nonnull__, __pure__))
 double bead_norm(struct ensem const*, struct bead const*);
 
-// The call `bead_dist2(e, r0, r1)` returns the distance squared
+// The call `bead_dist2(ensem, r0, r1)` returns the distance squared
 // between `r0` and `r1` according to the minimum image convention.
 __attribute__ ((__nonnull__, __pure__))
 double bead_dist2(struct ensem const*, struct bead const*, struct bead const*);
 
-// The call `bead_dist(e, r0, r1)` returns the distance
+// The call `bead_dist(ensem, r0, r1)` returns the distance
 // between `r0` and `r1` according to the minimum image convention.
-// This is equivalent to `sqrt(bead_dist2(e, r0, r1))`.
+// This is equivalent to `sqrt(bead_dist2(ensem, r0, r1))`.
 __attribute__ ((__nonnull__, __pure__))
 double bead_dist(struct ensem const*, struct bead const*, struct bead const*);
 
-// The call `sim_run(ndim, npoly, nbead, nsubdiv,
-// nthrm, nprod, nthrmrec, nprodrec,
-// periodic, L, beta, Vint, Vend, Vext)` is magic.
+// The call `sim_get_ensem(nap)` returns the ensemble of the napkin `nap`.
+struct ensem* sim_get_ensem(struct napkin*);
+
+// The call `sim_periodic(ens, p)` sets the periodicity
+// of the ensemble `ens` to `p`.
 __attribute__ ((__nonnull__))
-bool sim_run(size_t, size_t, size_t, size_t, size_t, size_t, size_t, size_t,
-    bool, double, double,
-    double (*)(struct ensem const*, struct bead const*, struct bead const*),
-    double (*)(struct ensem const*, struct bead const*, struct bead const*),
+void sim_periodic(struct ensem*, bool);
+
+// The call `sim_potint(ens, f)` sets `f`
+// as the internal (polymer-to-polymer) potential of the ensemble `ens`.
+__attribute__ ((__nonnull__))
+void sim_potint(struct ensem*,
+    double (*)(struct ensem const*, struct bead const*, struct bead const*));
+
+// The call `sim_potend(ens, f)` sets `f`
+// as the additional (end-to-end) potential of the ensemble `ens`.
+__attribute__ ((__nonnull__))
+void sim_potend(struct ensem*,
+    double (*)(struct ensem const*, struct bead const*, struct bead const*));
+
+// The call `sim_potext(ens, f)` sets `f`
+// as the external (bead-to-origin) potential of the ensemble `ens`.
+__attribute__ ((__nonnull__))
+void sim_potext(struct ensem*,
     double (*)(struct ensem const*, struct bead const*));
 
 // TODO Organize this mess.
@@ -84,23 +101,25 @@ __attribute__ ((__nonnull__, __pure__))
 static double est_pigs_tde(struct ensem const*);
 
 __attribute__ ((__nonnull__))
-static void Rm_const(struct napkin*, double);
+void Rm_const(struct napkin*, double);
 __attribute__ ((__nonnull__))
-static void Rend_close(struct napkin*);
+void Rend_close(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rend_open(struct napkin*);
+void Rend_open(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rend_cycle(struct napkin*);
+void Rend_cycle(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rr_rand(struct napkin*);
+void Rr_pt(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rr_randpt(struct napkin*);
+void Rr_rand(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rr_randlatt(struct napkin*);
+void Rr_randpt(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rr_ptlatt(struct napkin*);
+void Rr_randlatt(struct napkin*);
 __attribute__ ((__nonnull__))
-static void Rr_circlatt(struct napkin*);
+void Rr_ptlatt(struct napkin*);
+__attribute__ ((__nonnull__))
+void Rr_circlatt(struct napkin*);
 
 __attribute__ ((__nonnull__))
 static void move_accept_ss(struct napkin*);
@@ -192,10 +211,15 @@ static bool save_const(struct napkin const*);
 __attribute__ ((__nonnull__))
 static bool save_mut(struct napkin const*);
 
-static void napkin_free(struct napkin*);
+void napkin_free(struct napkin*);
 
 __attribute__ ((__malloc__))
-static struct napkin* napkin_alloc(size_t, size_t, size_t, size_t,
-    size_t, size_t, size_t, size_t);
+struct napkin* napkin_alloc(size_t, size_t, size_t, size_t,
+    size_t, size_t, size_t, size_t,
+    double, double, double);
+
+// The call `sim_run(nap)` is magic.
+__attribute__ ((__nonnull__))
+bool sim_run(struct napkin* const napkin);
 
 #endif

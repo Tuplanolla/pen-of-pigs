@@ -137,11 +137,11 @@ double stats_corrtime(struct stats const* const stats) {
       return NAN;
     default:
       for (size_t k = 1; k < stats->n; ++k) {
-        double const R = stats_autocorr(stats, k);
-        if (R < 0.0)
+        double const A = stats_autocorr(stats, k);
+        if (A < 0.0)
           break;
 
-        S += R;
+        S += A;
       }
 
       return 1.0 + 2.0 * S;

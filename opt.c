@@ -59,9 +59,11 @@ bool opt_parse_size(size_t* const n, size_t const min, size_t const max) {
   unsigned long long int const k = strtoull(optarg, &endptr, 10);
   if (errno != 0 || endptr == optarg || *endptr != '\0') {
     errno = EINVAL;
+
     return false;
   } else if (k > SIZE_MAX || (size_t) k < min || (size_t) k > max) {
     errno = ERANGE;
+
     return false;
   } else
     *n = (size_t) k;
@@ -75,9 +77,11 @@ bool opt_parse_fp(double* const x, double const min, double const max) {
   double const y = strtod(optarg, &endptr);
   if (errno != 0 || endptr == optarg || *endptr != '\0') {
     errno = EINVAL;
+
     return false;
   } else if (y < min || y > max) {
     errno = ERANGE;
+
     return false;
   } else
     *x = y;

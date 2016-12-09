@@ -11,8 +11,8 @@ unset key
 set dgrid3d K, K
 set hidden3d
 set xyplane relative 0.1
-set xrange [0 : L]
-set yrange [0 : L]
+set xrange [0.0 : L]
+set yrange [0.0 : L]
 splot for [dx = -L : L : L] for [dy = -L : L : L] \
   'run-latest/posdist.data' using \
   ($1 + dx) : ($1 + dy) : 3 \

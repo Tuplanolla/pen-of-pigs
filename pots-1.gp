@@ -6,7 +6,7 @@ L = `cat 'run-latest/length.data'`
 set xlabel '$x$'
 set ylabel '$V$'
 unset key
-set xrange [0 - L / 2 : L + L / 2]
+set xrange [0.0 - L / 2.0 : L + L / 2.0]
 set yrange [-50 < * : * < 50]
 plot for [i = 0 : 1] \
   for [dx = -L : L : L] \
