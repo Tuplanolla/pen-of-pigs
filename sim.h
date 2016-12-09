@@ -173,6 +173,12 @@ static bool res_use(struct napkin const*, char const*,
     bool (*)(struct napkin const*, FILE*));
 
 __attribute__ ((__nonnull__))
+static bool disp_length(struct napkin const*, FILE*);
+__attribute__ ((__nonnull__))
+static bool disp_periodic(struct napkin const*, FILE*);
+__attribute__ ((__nonnull__))
+static bool disp_pots(struct napkin const*, FILE*);
+__attribute__ ((__nonnull__))
 static bool disp_ndim(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
 static bool disp_npoly(struct napkin const*, FILE*);
@@ -181,21 +187,21 @@ static bool disp_nbead(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
 static bool disp_nsubdiv(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
-static bool disp_length(struct napkin const*, FILE*);
-__attribute__ ((__nonnull__))
-static bool disp_R_r(struct napkin const*, FILE*, size_t, size_t, size_t);
-__attribute__ ((__nonnull__))
-static bool disp_pots(struct napkin const*, FILE*);
-__attribute__ ((__nonnull__))
 static bool disp_energy(struct napkin const*, FILE*);
+__attribute__ ((__nonnull__))
+static bool disp_energy_corrtime(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
 static bool disp_params(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
-static bool disp_polys(struct napkin const*, FILE*);
+static void ensem_extents(struct ensem const*, double*, double*);
 __attribute__ ((__nonnull__))
 static bool disp_posdist(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
 static bool disp_paircorr(struct napkin const*, FILE*);
+__attribute__ ((__nonnull__))
+static bool disp_polys1(struct napkin const*, FILE*, size_t, size_t, size_t);
+__attribute__ ((__nonnull__))
+static bool disp_polys(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))
 static bool disp_progress(struct napkin const*, FILE*);
 __attribute__ ((__nonnull__))

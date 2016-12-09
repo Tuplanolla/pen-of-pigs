@@ -110,7 +110,6 @@ int main(int const n, char** const x) {
   }
 
   sim_potext(sim_get_ensem(nap), potext_harm);
-  sim_periodic(sim_get_ensem(nap), true); // TODO This is bogus.
 
   if (!sim_run(nap)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

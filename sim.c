@@ -638,6 +638,10 @@ static void choose(struct napkin* const nap,
 }
 
 static void posdist_accum(struct napkin const* const nap) {
+  double a;
+  double b;
+  ensem_extents(&nap->ens, &a, &b);
+
   for (size_t ipoly = 0; ipoly < nap->ens.nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < nap->ens.nmemb.bead; ++ibead) {
       size_t i[DIM_MAX];
@@ -645,8 +649,7 @@ static void posdist_accum(struct napkin const* const nap) {
       for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
         i[idim] = size_uclamp(
             (size_t) (floor(fp_lerp(nap->ens.R[ipoly].r[ibead].d[idim],
-                  0.0, (double) nap->ens.L,
-                  0.0, (double) nap->ens.nmemb.subdiv))),
+                  a, b, 0.0, (double) nap->ens.nmemb.subdiv))),
             nap->ens.nmemb.subdiv);
 
       ++nap->p[size_unhc(nap->ens.nmemb.subdiv, i,
@@ -709,6 +712,54 @@ static bool res_use(struct napkin const* const nap, char const* const str,
   return p;
 }
 
+static bool disp_periodic(struct napkin const* const nap, FILE* const fp) {
+  if (fprintf(fp, "%d\n", nap->ens.periodic ? 1 : 0) < 0)
+    return false;
+
+  return true;
+}
+
+static bool disp_length(struct napkin const* const nap, FILE* const fp) {
+  if (fprintf(fp, "%f\n", nap->ens.L) < 0)
+    return false;
+
+  return true;
+}
+
+static bool disp_pots(struct napkin const* const nap, FILE* const fp) {
+  double a;
+  double b;
+  ensem_extents(&nap->ens, &a, &b);
+
+  size_t const npt = size_pow(nap->ens.nmemb.subdiv, nap->ens.nmemb.dim);
+
+  struct bead r0;
+  for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
+    r0.d[idim] = 0.0;
+
+  for (size_t ipt = 0; ipt < npt; ++ipt) {
+    size_t i[DIM_MAX];
+    size_hc(ipt, nap->ens.nmemb.subdiv, i, nap->ens.nmemb.dim);
+
+    struct bead r;
+
+    for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
+      r.d[idim] = fp_lerp((double) i[idim],
+          0.0, (double) nap->ens.nmemb.subdiv, a, b);
+
+    for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
+      if (fprintf(fp, "%f ", r.d[idim]) < 0)
+        return false;
+
+    if (fprintf(fp, "%f %f\n",
+          nap->ens.Vext(&nap->ens, &r),
+          nap->ens.Vint(&nap->ens, &r0, &r)) < 0)
+      return false;
+  }
+
+  return true;
+}
+
 static bool disp_ndim(struct napkin const* const nap, FILE* const fp) {
   if (fprintf(fp, "%zu\n", nap->ens.nmemb.dim) < 0)
     return false;
@@ -733,59 +784,6 @@ static bool disp_nbead(struct napkin const* const nap, FILE* const fp) {
 static bool disp_nsubdiv(struct napkin const* const nap, FILE* const fp) {
   if (fprintf(fp, "%zu\n", nap->ens.nmemb.subdiv) < 0)
     return false;
-
-  return true;
-}
-
-static bool disp_length(struct napkin const* const nap, FILE* const fp) {
-  if (fprintf(fp, "%f\n", nap->ens.L) < 0)
-    return false;
-
-  return true;
-}
-
-static bool disp_R_r(struct napkin const* const nap, FILE* const fp,
-    size_t const iindex, size_t const ipoly, size_t const ibead) {
-  if (fprintf(fp, "%zu", iindex) < 0)
-    return false;
-
-  for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
-    if (fprintf(fp, " %f", nap->ens.R[ipoly].r[ibead].d[idim]) < 0)
-      return false;
-
-  if (fprintf(fp, "\n") < 0)
-    return false;
-
-  return true;
-}
-
-static bool disp_pots(struct napkin const* const nap, FILE* const fp) {
-  size_t const npt = size_pow(nap->ens.nmemb.subdiv + 1,
-      nap->ens.nmemb.dim);
-
-  struct bead r0;
-  for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
-    r0.d[idim] = 0.0;
-
-  for (size_t ipt = 0; ipt < npt; ++ipt) {
-    size_t i[DIM_MAX];
-    size_hc(ipt, nap->ens.nmemb.subdiv + 1, i, nap->ens.nmemb.dim);
-
-    struct bead r;
-
-    for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
-      r.d[idim] = fp_lerp((double) i[idim],
-          0.0, (double) nap->ens.nmemb.subdiv, 0.0, nap->ens.L);
-
-    for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
-      if (fprintf(fp, "%f ", r.d[idim]) < 0)
-        return false;
-
-    if (fprintf(fp, "%f %f\n",
-          nap->ens.Vext(&nap->ens, &r),
-          nap->ens.Vint(&nap->ens, &r0, &r)) < 0)
-      return false;
-  }
 
   return true;
 }
@@ -819,32 +817,28 @@ static bool disp_params(struct napkin const* const nap, FILE* const fp) {
   return true;
 }
 
-static bool disp_polys(struct napkin const* const nap, FILE* const fp) {
-  for (size_t ipoly = 0; ipoly < nap->ens.nmemb.poly; ++ipoly) {
-    for (size_t ibead = 0; ibead < nap->ens.nmemb.bead; ++ibead)
-      if (!disp_R_r(nap, fp, ibead, ipoly, ibead))
-        return false;
-
-    if (nap->ens.R[ipoly].ito != SIZE_MAX)
-      if (!disp_R_r(nap, fp,
-            nap->ens.nmemb.bead, nap->ens.R[ipoly].ito, 0))
-        return false;
-
-    if (fprintf(fp, "\n") < 0)
-      return false;
+static void ensem_extents(struct ensem const* const ens,
+    double* const a, double* const b) {
+  if (ens->periodic) {
+    *a = 0.0;
+    *b = ens->L;
+  } else {
+    *a = -ens->L / 2.0;
+    *b = ens->L / 2.0;
   }
-
-  return true;
 }
 
 static bool disp_posdist(struct napkin const* const nap, FILE* const fp) {
-  size_t const nbin = size_pow(nap->ens.nmemb.subdiv,
-      nap->ens.nmemb.dim);
+  double a;
+  double b;
+  ensem_extents(&nap->ens, &a, &b);
+
+  size_t const nbin = size_pow(nap->ens.nmemb.subdiv, nap->ens.nmemb.dim);
 
   size_t N = 0;
   for (size_t ibin = 0; ibin < nbin; ++ibin)
     N += nap->p[ibin];
-  double const S = (double) N * nap->ens.L;
+  double const S = (N == 0 ? 1.0 : (double) N) * nap->ens.L;
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     size_t i[DIM_MAX];
@@ -854,7 +848,7 @@ static bool disp_posdist(struct napkin const* const nap, FILE* const fp) {
 
     for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
       r.d[idim] = fp_lerp((double) i[idim] + 0.5,
-          0.0, (double) nap->ens.nmemb.subdiv, 0.0, nap->ens.L);
+          0.0, (double) nap->ens.nmemb.subdiv, a, b);
 
     for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
       if (fprintf(fp, "%f ", r.d[idim]) < 0)
@@ -868,8 +862,7 @@ static bool disp_posdist(struct napkin const* const nap, FILE* const fp) {
 }
 
 static bool disp_paircorr(struct napkin const* const nap, FILE* const fp) {
-  size_t const nbin = size_pow(nap->ens.nmemb.subdiv,
-      nap->ens.nmemb.dim);
+  size_t const nbin = size_pow(nap->ens.nmemb.subdiv, nap->ens.nmemb.dim);
 
   size_t N = 0.0;
   for (size_t ibin = 0; ibin < nbin; ++ibin)
@@ -881,6 +874,38 @@ static bool disp_paircorr(struct napkin const* const nap, FILE* const fp) {
         0.0, (double) nbin, 0.0, nap->ens.L);
 
     if (fprintf(fp, "%f %f\n", r, (double) nap->g[ibin] / S) < 0)
+      return false;
+  }
+
+  return true;
+}
+
+static bool disp_polys1(struct napkin const* const nap, FILE* const fp,
+    size_t const iindex, size_t const ipoly, size_t const ibead) {
+  if (fprintf(fp, "%f", (double) iindex * nap->ens.tau) < 0)
+    return false;
+
+  for (size_t idim = 0; idim < nap->ens.nmemb.dim; ++idim)
+    if (fprintf(fp, " %f", nap->ens.R[ipoly].r[ibead].d[idim]) < 0)
+      return false;
+
+  if (fprintf(fp, "\n") < 0)
+    return false;
+
+  return true;
+}
+
+static bool disp_polys(struct napkin const* const nap, FILE* const fp) {
+  for (size_t ipoly = 0; ipoly < nap->ens.nmemb.poly; ++ipoly) {
+    for (size_t ibead = 0; ibead < nap->ens.nmemb.bead; ++ibead)
+      if (!disp_polys1(nap, fp, ibead, ipoly, ibead))
+        return false;
+
+    if (nap->ens.R[ipoly].ito != SIZE_MAX)
+      if (!disp_polys1(nap, fp, nap->ens.nmemb.bead, nap->ens.R[ipoly].ito, 0))
+        return false;
+
+    if (fprintf(fp, "\n") < 0)
       return false;
   }
 
@@ -936,19 +961,20 @@ static bool prepare_save(struct napkin const* const nap) {
 }
 
 static bool save_const(struct napkin const* const nap) {
-  return res_use(nap, "ndim", disp_ndim) &&
+  return res_use(nap, "periodic", disp_periodic) &&
+    res_use(nap, "length", disp_length) &&
+    res_use(nap, "pots", disp_pots) &&
+    res_use(nap, "ndim", disp_ndim) &&
     res_use(nap, "npoly", disp_npoly) &&
     res_use(nap, "nbead", disp_nbead) &&
-    res_use(nap, "nsubdiv", disp_nsubdiv) &&
-    res_use(nap, "length", disp_length) &&
-    res_use(nap, "pots", disp_pots);
+    res_use(nap, "nsubdiv", disp_nsubdiv);
 }
 
 static bool save_mut(struct napkin const* const nap) {
-  return res_use(nap, "polys", disp_polys) &&
+  return res_use(nap, "energy-corrtime", disp_energy_corrtime) &&
     res_use(nap, "posdist", disp_posdist) &&
     res_use(nap, "paircorr", disp_paircorr) &&
-    res_use(nap, "energy-corrtime", disp_energy_corrtime);
+    res_use(nap, "polys", disp_polys);
 }
 
 void napkin_free(struct napkin* const nap) {
