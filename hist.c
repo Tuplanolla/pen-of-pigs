@@ -130,5 +130,5 @@ size_t hist_sumhits(struct hist const* const hist) {
 }
 
 double hist_normhits(struct hist const* const hist, size_t const i) {
-  return (double) hist->m[i] / (double) hist->n;
+  return hist->n == 0 ? 0.0 : (double) hist->m[i] / (double) hist->n;
 }

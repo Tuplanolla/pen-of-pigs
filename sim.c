@@ -50,12 +50,10 @@ struct step {
   size_t prodrec;
 };
 
-// This structure represents a bead and is a part of `struct poly`.
 struct bead {
   double d[DIM_MAX];
 };
 
-// This structure represents a polymer and is a part of `struct ensem`.
 struct poly {
   double m;
   size_t ifrom;
@@ -63,26 +61,24 @@ struct poly {
   struct bead r[BEAD_MAX];
 };
 
-// This structure represents an ensemble and is a part of `struct sim`.
-struct ensem {
+struct ens {
   bool periodic;
   double L;
   double a;
   double b;
   double tau;
-  sim_pot Vint;
-  sim_pot Vend;
-  sim_potext Vext;
+  ens_pot Vint;
+  ens_pot Vend;
+  ens_potext Vext;
   struct memb nmemb;
   struct step nstep;
   struct step istep;
   struct poly R[POLY_MAX];
 };
 
-// This structure contains all the necessary bookkeeping.
 struct sim {
   gsl_rng* rng;
-  struct ensem ens;
+  struct ens ens;
   struct stats* tde;
   struct hist* p;
   struct hist* g;
@@ -117,20 +113,20 @@ struct sim {
 
 typedef double (* sim_wrapper)(double, double);
 
-double sim_pot_zero(
-    __attribute__ ((__unused__)) struct ensem const* const ens,
+double ens_pot_zero(
+    __attribute__ ((__unused__)) struct ens const* const ens,
     __attribute__ ((__unused__)) struct bead const* const r0,
     __attribute__ ((__unused__)) struct bead const* const r1) {
   return 0.0;
 }
 
-double sim_potext_zero(
-    __attribute__ ((__unused__)) struct ensem const* const ens,
+double ens_potext_zero(
+    __attribute__ ((__unused__)) struct ens const* const ens,
     __attribute__ ((__unused__)) struct bead const* const r) {
   return 0.0;
 }
 
-double sim_norm2(struct ensem const* const ens, struct bead const* const r) {
+double ens_norm2(struct ens const* const ens, struct bead const* const r) {
   double s = 0.0;
 
   sim_wrapper const f = ens->periodic ? fp_swrap : fp_constant;
@@ -141,11 +137,11 @@ double sim_norm2(struct ensem const* const ens, struct bead const* const r) {
   return s;
 }
 
-double sim_norm(struct ensem const* const ens, struct bead const* const r) {
-  return sqrt(sim_norm2(ens, r));
+double ens_norm(struct ens const* const ens, struct bead const* const r) {
+  return sqrt(ens_norm2(ens, r));
 }
 
-double sim_dist2(struct ensem const* const ens,
+double ens_dist2(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
   double s = 0.0;
 
@@ -157,29 +153,24 @@ double sim_dist2(struct ensem const* const ens,
   return s;
 }
 
-double sim_dist(struct ensem const* const ens,
+double ens_dist(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
-  return sqrt(sim_dist2(ens, r0, r1));
+  return sqrt(ens_dist2(ens, r0, r1));
 }
 
-struct ensem* sim_get_ensem(struct sim* const sim) {
-  return &sim->ens;
+void sim_set_potint(struct sim* const sim, ens_pot const V) {
+  sim->ens.Vint = V;
 }
 
-void sim_set_potint(struct ensem* const ens, sim_pot const V) {
-  ens->Vint = V;
+void sim_set_potend(struct sim* const sim, ens_pot const V) {
+  sim->ens.Vend = V;
 }
 
-void sim_set_potend(struct ensem* const ens, sim_pot const V) {
-  ens->Vend = V;
+void sim_set_potext(struct sim* const sim, ens_potext const V) {
+  sim->ens.Vext = V;
 }
 
-void sim_set_potext(struct ensem* const ens, sim_potext const V) {
-  ens->Vext = V;
-}
-
-// Kinetic energy within a polymer from one bead to the previous one.
-static double sim_kin_polybead_bw(struct ensem const* const ens,
+double ens_kin_polybead_bw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
   double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->tau));
 
@@ -190,20 +181,17 @@ static double sim_kin_polybead_bw(struct ensem const* const ens,
     if (jpoly == SIZE_MAX)
       return 0.0;
     else
-      return M * sim_dist2(ens,
+      return M * ens_dist2(ens,
           &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[jbead]);
   } else {
     size_t const jbead = ibead - 1;
 
-    return M * sim_dist2(ens,
+    return M * ens_dist2(ens,
         &ens->R[ipoly].r[ibead], &ens->R[ipoly].r[jbead]);
   }
 }
 
-// Kinetic energy within a polymer from one bead to the next one.
-// \lambda = \hbar / 2 m, K = x^2 / 4 \lambda \tau^2 = M x^2
-// M = m / 2 \hbar \tau^2
-static double sim_kin_polybead_fw(struct ensem const* const ens,
+double ens_kin_polybead_fw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
   double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->tau));
 
@@ -214,46 +202,42 @@ static double sim_kin_polybead_fw(struct ensem const* const ens,
     if (jpoly == SIZE_MAX)
       return 0.0;
     else
-      return M * sim_dist2(ens,
+      return M * ens_dist2(ens,
           &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[jbead]);
   } else {
     size_t const jbead = ibead + 1;
 
-    return M * sim_dist2(ens,
+    return M * ens_dist2(ens,
         &ens->R[ipoly].r[ibead], &ens->R[ipoly].r[jbead]);
   }
 }
 
-// Kinetic energy within a polymer from one bead to its two neighbors.
-static double sim_kin_polybead(struct ensem const* const ens,
+double ens_kin_polybead(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
-  return sim_kin_polybead_bw(ens, ipoly, ibead) +
-    sim_kin_polybead_fw(ens, ipoly, ibead);
+  return ens_kin_polybead_bw(ens, ipoly, ibead) +
+    ens_kin_polybead_fw(ens, ipoly, ibead);
 }
 
-// Kinetic energy within a polymer.
-static double sim_kin_poly(struct ensem const* const ens,
+double ens_kin_poly(struct ens const* const ens,
     size_t const ipoly) {
   double K = 0.0;
 
   for (size_t ibead = 0; ibead < ens->nmemb.bead; ++ibead)
-    K += sim_kin_polybead_fw(ens, ipoly, ibead);
+    K += ens_kin_polybead_fw(ens, ipoly, ibead);
 
   return K;
 }
 
-// Kinetic energy.
-static double sim_kin_total(struct ensem const* const ens) {
+double ens_kin_total(struct ens const* const ens) {
   double K = 0.0;
 
   for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
-    K += sim_kin_poly(ens, ipoly);
+    K += ens_kin_poly(ens, ipoly);
 
   return K;
 }
 
-// Potential energy between certain beads of all polymers.
-static double sim_potint_bead(struct ensem const* const ens,
+double ens_potint_bead(struct ens const* const ens,
     size_t const ibead) {
   double V = 0.0;
 
@@ -265,8 +249,7 @@ static double sim_potint_bead(struct ensem const* const ens,
   return V;
 }
 
-// Additional potential energy between either of the ends of all polymers.
-static double sim_potend_bead(struct ensem const* const ens,
+double ens_potend_bead(struct ens const* const ens,
     size_t const ibead) {
   double V = 0.0;
 
@@ -288,92 +271,92 @@ static double sim_potend_bead(struct ensem const* const ens,
   return V;
 }
 
-// External potential energy for one bead in a polymer.
-static double sim_potext_polybead(struct ensem const* const ens,
+double ens_potext_polybead(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
   return ens->Vext(ens, &ens->R[ipoly].r[ibead]);
 }
 
-// External potential energy for every bead in a polymer.
-static double sim_potext_bead(struct ensem const* const ens, size_t const ibead) {
+double ens_potext_bead(struct ens const* const ens, size_t const ibead) {
   double V = 0.0;
 
   for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
-    V += sim_potext_polybead(ens, ipoly, ibead);
+    V += ens_potext_polybead(ens, ipoly, ibead);
 
   return V;
 }
 
-// Potential energy for one bead over all polymers.
-static double sim_pot_bead(struct ensem const* const ens,
+double ens_pot_bead(struct ens const* const ens,
     size_t const ibead) {
-  return sim_potint_bead(ens, ibead) + sim_potend_bead(ens, ibead) +
-    sim_potext_bead(ens, ibead);
+  return ens_potint_bead(ens, ibead) + ens_potend_bead(ens, ibead) +
+    ens_potext_bead(ens, ibead);
 }
 
-// Potential energy.
-static double sim_pot_total(struct ensem const* const ens) {
+double ens_pot_total(struct ens const* const ens) {
   double V = 0.0;
 
   for (size_t ibead = 0; ibead < ens->nmemb.bead; ++ibead)
-    V += sim_pot_bead(ens, ibead);
+    V += ens_pot_bead(ens, ibead);
 
   return V;
 }
 
-// Thermodynamic energy estimator for closed polymers.
-// \langle E_T\rangle & = \frac 1{M \tau} \sum_{k = 1}^M
-// \Bigl\langle\frac{d N} 2 - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau} + \tau V(R_k)\Bigr\rangle
-static double est_pimc_tde(struct ensem const* const ens) {
+double ens_est_pimc_tde(struct ens const* const ens,
+    __attribute__ ((__unused__)) void const* const p) {
   double const E = (double) (ens->nmemb.dim * ens->nmemb.poly) /
     (2.0 * ens->tau);
-  double const K = sim_kin_total(ens) /
+  double const K = ens_kin_total(ens) /
     (double) (ens->nmemb.poly * ens->nmemb.bead);
-  double const V = sim_pot_total(ens) /
+  double const V = ens_pot_total(ens) /
     (double) (ens->nmemb.poly * ens->nmemb.bead);
 
   return E - K + V;
 }
 
-// TODO The crap thermodynamic energy estimator for open polymers.
-static double est_pigs_crap(
-    __attribute__ ((__unused__)) struct ensem const* const ens) {
+double ens_est_pigs_tde(
+    __attribute__ ((__unused__)) struct ens const* const ens,
+    __attribute__ ((__unused__)) void const* const p) {
   return NAN;
 }
 
-// TODO Thermodynamic energy estimator for open polymers.
-static double est_pigs_tde(
-    __attribute__ ((__unused__)) struct ensem const* const ens) {
+double ens_est_pigs_crap(
+    __attribute__ ((__unused__)) struct ens const* const ens,
+    __attribute__ ((__unused__)) void const* const p) {
   return NAN;
 }
 
-void sim_mass_const(struct sim* const sim, double const m) {
+void sim_weight_const(struct sim* const sim, void const* const p) {
+  double const m = *((double const*) p);
+
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     sim->ens.R[ipoly].m = m;
 }
 
-void sim_perm_close(struct sim* const sim) {
+void sim_perm_close(struct sim* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     sim->ens.R[ipoly].ifrom = ipoly;
     sim->ens.R[ipoly].ito = ipoly;
   }
 }
 
-void sim_perm_open(struct sim* const sim) {
+void sim_perm_open(struct sim* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     sim->ens.R[ipoly].ifrom = SIZE_MAX;
     sim->ens.R[ipoly].ito = SIZE_MAX;
   }
 }
 
-void sim_perm_chain(struct sim* const sim) {
+void sim_perm_chain(struct sim* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     sim->ens.R[ipoly].ifrom = size_uwrap_dec(ipoly, sim->ens.nmemb.poly);
     sim->ens.R[ipoly].ito = size_uwrap_inc(ipoly, sim->ens.nmemb.poly);
   }
 }
 
-void sim_perm_random(struct sim* const sim) {
+void sim_perm_random(struct sim* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
   size_t i[POLY_MAX];
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     i[ipoly] = ipoly;
@@ -467,6 +450,8 @@ void sim_place_lattice(struct sim* const sim, sim_placer const f,
     f(sim, ipoly, &r, sim->ens.L / b, p);
   }
 }
+
+void sim_move_null(__attribute__ ((__unused__)) struct sim* const sim) {}
 
 void sim_move_accept_ss(struct sim* const sim) {
   ++sim->params.ssm.acc;
@@ -591,16 +576,16 @@ double sim_propose_ss(struct sim* const sim) {
   size_t const ibead = ran_index(sim->rng, sim->ens.nmemb.bead);
 
   double const V0 =
-    sim_potint_bead(&sim->ens, ibead) + sim_potend_bead(&sim->ens, ibead) +
-    sim_potext_polybead(&sim->ens, ipoly, ibead);
-  double const K0 = sim_kin_polybead(&sim->ens, ipoly, ibead);
+    ens_potint_bead(&sim->ens, ibead) + ens_potend_bead(&sim->ens, ibead) +
+    ens_potext_polybead(&sim->ens, ipoly, ibead);
+  double const K0 = ens_kin_polybead(&sim->ens, ipoly, ibead);
 
   sim_move_ss(sim, ipoly, ibead);
 
   double const V1 =
-    sim_potint_bead(&sim->ens, ibead) + sim_potend_bead(&sim->ens, ibead) +
-    sim_potext_polybead(&sim->ens, ipoly, ibead);
-  double const K1 = sim_kin_polybead(&sim->ens, ipoly, ibead);
+    ens_potint_bead(&sim->ens, ibead) + ens_potend_bead(&sim->ens, ibead) +
+    ens_potext_polybead(&sim->ens, ipoly, ibead);
+  double const K1 = ens_kin_polybead(&sim->ens, ipoly, ibead);
 
   return sim->ens.tau * (K1 + V1 - K0 - V0);
 }
@@ -608,16 +593,16 @@ double sim_propose_ss(struct sim* const sim) {
 double sim_propose_cmd(struct sim* const sim) {
   size_t const ipoly = ran_index(sim->rng, sim->ens.nmemb.poly);
 
-  double const V0 = sim_pot_total(&sim->ens);
+  double const V0 = ens_pot_total(&sim->ens);
 
   sim_move_cmd(sim, ipoly);
 
-  double const V1 = sim_pot_total(&sim->ens);
+  double const V1 = ens_pot_total(&sim->ens);
 
   return sim->ens.tau * (V1 - V0);
 }
 
-static void decide(struct sim* const sim, double const DeltaS) {
+void sim_decide_mq(struct sim* const sim, double const DeltaS) {
   if (DeltaS > 0.0 && exp(-DeltaS) < ran_uopen(sim->rng, 1.0))
     sim->reject(sim);
   else
@@ -626,7 +611,7 @@ static void decide(struct sim* const sim, double const DeltaS) {
   sim->adjust(sim);
 }
 
-bool res_close(__attribute__ ((__unused__)) struct sim const* const sim,
+bool sim_res_close(__attribute__ ((__unused__)) struct sim const* const sim,
     FILE* const fp) {
   if (fclose(fp) == EOF)
     return false;
@@ -634,7 +619,7 @@ bool res_close(__attribute__ ((__unused__)) struct sim const* const sim,
   return true;
 }
 
-FILE* res_open(struct sim const* const sim, char const* const str) {
+FILE* sim_res_open(struct sim const* const sim, char const* const str) {
   // Sanity check.
   if (strchr(str, '.') != NULL || strchr(str, '/') != NULL)
     return NULL;
@@ -648,15 +633,15 @@ FILE* res_open(struct sim const* const sim, char const* const str) {
   return fopen(buf, "w");
 }
 
-bool res_print(struct sim const* const sim, char const* const str,
+bool sim_res_print(struct sim const* const sim, char const* const str,
     sim_printer const f, void const* const p) {
-  FILE* const fp = res_open(sim, str);
+  FILE* const fp = sim_res_open(sim, str);
   if (fp == NULL)
     return false;
 
   bool const q = f(sim, fp, p);
 
-  if (!res_close(sim, fp))
+  if (!sim_res_close(sim, fp))
     return false;
 
   return q;
@@ -743,7 +728,7 @@ bool print_nsubdiv(struct sim const* const sim, FILE* const fp,
 bool print_energy(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu %g %g %g\n",
-        sim->ens.istep.prod, est_pimc_tde(&sim->ens),
+        sim->ens.istep.prod, ens_est_pimc_tde(&sim->ens, NULL),
         stats_mean(sim->tde), stats_sem(sim->tde)) < 0)
     return false;
 
@@ -805,6 +790,7 @@ bool print_paircorr(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
+__attribute__ ((__nonnull__))
 static bool print_polys_bead(struct sim const* const sim, FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   if (fprintf(fp, "%g", (double) iindex * sim->ens.tau) < 0)
@@ -873,7 +859,7 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
-static bool prepare_save(struct sim const* const sim) {
+bool sim_prepare_dirs(struct sim const* const sim) {
   // Sanity check.
   if (strncmp(sim->id, "run", 3) != 0)
     err_abort(strncmp);
@@ -890,21 +876,21 @@ static bool prepare_save(struct sim const* const sim) {
   return true;
 }
 
-static bool save_const(struct sim const* const sim) {
-  return res_print(sim, "periodic", print_periodic, NULL) &&
-    res_print(sim, "length", print_length, NULL) &&
-    res_print(sim, "pots", print_pots, NULL) &&
-    res_print(sim, "ndim", print_ndim, NULL) &&
-    res_print(sim, "npoly", print_npoly, NULL) &&
-    res_print(sim, "nbead", print_nbead, NULL) &&
-    res_print(sim, "nsubdiv", print_nsubdiv, NULL);
+bool sim_save_const(struct sim const* const sim) {
+  return sim_res_print(sim, "periodic", print_periodic, NULL) &&
+    sim_res_print(sim, "length", print_length, NULL) &&
+    sim_res_print(sim, "pots", print_pots, NULL) &&
+    sim_res_print(sim, "ndim", print_ndim, NULL) &&
+    sim_res_print(sim, "npoly", print_npoly, NULL) &&
+    sim_res_print(sim, "nbead", print_nbead, NULL) &&
+    sim_res_print(sim, "nsubdiv", print_nsubdiv, NULL);
 }
 
-static bool save_mut(struct sim const* const sim) {
-  return res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
-    res_print(sim, "posdist", print_posdist, NULL) &&
-    res_print(sim, "paircorr", print_paircorr, NULL) &&
-    res_print(sim, "polys", print_polys, NULL);
+bool sim_save_mut(struct sim const* const sim) {
+  return sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
+    sim_res_print(sim, "posdist", print_posdist, NULL) &&
+    sim_res_print(sim, "paircorr", print_paircorr, NULL) &&
+    sim_res_print(sim, "polys", print_polys, NULL);
 }
 
 void sim_free(struct sim* const sim) {
@@ -963,9 +949,9 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
 
     sim->ens.tau = beta / (double) nbead;
 
-    sim->ens.Vint = sim_pot_zero;
-    sim->ens.Vend = sim_pot_zero;
-    sim->ens.Vext = sim_potext_zero;
+    sim->ens.Vint = ens_pot_zero;
+    sim->ens.Vend = ens_pot_zero;
+    sim->ens.Vext = ens_potext_zero;
 
     sim->ens.nmemb.dim = ndim;
     sim->ens.nmemb.poly = npoly;
@@ -982,9 +968,9 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->ens.istep.thrmrec = 0;
     sim->ens.istep.prodrec = 0;
 
-    sim->accept = NULL;
-    sim->reject = NULL;
-    sim->adjust = NULL;
+    sim->accept = sim_move_null;
+    sim->reject = sim_move_null;
+    sim->adjust = sim_move_null;
 
     sim->tde = stats_alloc(nprod);
     if (sim->tde == NULL)
@@ -1006,8 +992,8 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->params.cmd.rej = 0;
     sim->params.cmd.h = L / 2.0;
 
-    sim_mass_const(sim, m);
-    sim_perm_close(sim);
+    sim_weight_const(sim, &m);
+    sim_perm_close(sim, NULL);
     sim_place_point(sim, sim_placer_point, NULL);
   }
 
@@ -1020,17 +1006,19 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
   }
 }
 
+__attribute__ ((__nonnull__))
 static void posdist_accum(struct sim const* const sim) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
       (void) hist_accum(sim->p, sim->ens.R[ipoly].r[ibead].d);
 }
 
+__attribute__ ((__nonnull__))
 static void paircorr_accum(struct sim const* const sim) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-        double const d = sim_dist(&sim->ens,
+        double const d = ens_dist(&sim->ens,
             &sim->ens.R[ipoly].r[ibead], &sim->ens.R[jpoly].r[ibead]);
 
         (void) hist_accum(sim->g, &d);
@@ -1052,19 +1040,19 @@ bool sim_run(struct sim* const sim) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  if (!prepare_save(sim))
-    err_abort(prepare_save);
+  if (!sim_prepare_dirs(sim))
+    err_abort(sim_prepare_dirs);
 
-  if (!save_const(sim))
-    err_abort(save_const);
+  if (!sim_save_const(sim))
+    err_abort(sim_save_const);
 
-  FILE* const paramsfp = res_open(sim, "params");
+  FILE* const paramsfp = sim_res_open(sim, "params");
   if (paramsfp == NULL)
-    err_abort(res_open);
+    err_abort(sim_res_open);
 
-  FILE* const energyfp = res_open(sim, "energy");
+  FILE* const energyfp = sim_res_open(sim, "energy");
   if (energyfp == NULL)
-    err_abort(res_open);
+    err_abort(sim_res_open);
 
   sim_proposer const proposers[] = {sim_propose_ss, sim_propose_cmd};
   size_t const nproposer = sizeof proposers / sizeof *proposers;
@@ -1072,7 +1060,7 @@ bool sim_run(struct sim* const sim) {
   for (size_t istep = 0;
       istep < sim->ens.nstep.thrm + sim->ens.nstep.prod;
       ++istep) {
-    decide(sim, proposers[ran_index(sim->rng, nproposer)](sim));
+    sim_decide_mq(sim, proposers[ran_index(sim->rng, nproposer)](sim));
 
     int signum;
     if (sigs_use(&signum))
@@ -1081,7 +1069,7 @@ bool sim_run(struct sim* const sim) {
           (void) print_progress(sim, stdout, NULL);
           break;
         case SIGUSR2:
-          (void) save_mut(sim);
+          (void) sim_save_mut(sim);
           break;
       }
 
@@ -1096,7 +1084,7 @@ bool sim_run(struct sim* const sim) {
 
       ++sim->ens.istep.thrm;
     } else {
-      (void) stats_accum(sim->tde, est_pimc_tde(&sim->ens));
+      (void) stats_accum(sim->tde, ens_est_pimc_tde(&sim->ens, NULL));
 
       posdist_accum(sim);
       paircorr_accum(sim);
@@ -1116,14 +1104,14 @@ bool sim_run(struct sim* const sim) {
     }
   }
 
-  if (!res_close(sim, energyfp))
-    err_abort(res_close);
+  if (!sim_res_close(sim, energyfp))
+    err_abort(sim_res_close);
 
-  if (!res_close(sim, paramsfp))
-    err_abort(res_close);
+  if (!sim_res_close(sim, paramsfp))
+    err_abort(sim_res_close);
 
-  if (!save_mut(sim))
-    err_abort(save_mut);
+  if (!sim_save_mut(sim))
+    err_abort(sim_save_mut);
 
   if (!print_progress(sim, stdout, NULL))
     err_abort(print_progress);

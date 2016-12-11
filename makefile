@@ -34,17 +34,13 @@ LDLIBS=-lm `pkg-config --libs gsl`
 plot: plots.pdf
 
 run: build
-	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho \
-	-d 1 -N 1 -M 32 -K 16 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
-	# GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./qho \
-	# -d 2 -N 16 -M 8 -K 16 -h 16384 -p 262144 -H 16 -P 256 -T 0.1
-	# GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./he4 \
-	# -d 1 -N 1 -M 32 -K 256 -h 4096 -p 32768 -H 16 -P 256 -L 10.0
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v \
+	./qho -d 1 -N 1 -M 32 -K 64 -h 8192 -p 131072 -H 16 -P 256 -T 0.1
 
 check: build
 	cppcheck -I/usr/include --enable=all *.c *.h
-	valgrind --leak-check=full --tool=memcheck ./qho \
-	-d 2 -N 4 -M 8 -K 16 -h 128 -p 256 -H 32 -P 64 -T 0.1
+	valgrind --leak-check=full --tool=memcheck \
+	./qho -d 2 -N 4 -M 8 -K 16 -h 128 -p 256 -H 32 -P 64 -T 0.1
 
 build: he4 qho
 

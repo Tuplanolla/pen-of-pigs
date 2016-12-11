@@ -11,9 +11,9 @@ static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double sim_pot_lj612(struct ensem const* const ensem,
+static double ens_pot_lj612(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
-  double const d = sim_dist2(ensem, r0, r1);
+  double const d = ens_dist2(ens, r0, r1);
 
   if (d == 0.0)
     return INFINITY;
@@ -101,7 +101,7 @@ int main(int const n, char** const x) {
     return EXIT_FAILURE;
   }
 
-  sim_set_potint(sim_get_ensem(sim), sim_pot_lj612);
+  sim_set_potint(sim, ens_pot_lj612);
   sim_place_lattice(sim, sim_placer_knot, NULL);
 
   if (!sim_run(sim)) {
