@@ -1241,13 +1241,19 @@ bool sim_run(struct sim* const sim) {
   if (!res_close(sim, paramsfp))
     err_abort(res_close);
 
-  size_t const k[] = {1, 2, 3};
-  printf("%s\n", sim_knot_valid(k, sim->ens.nmemb.dim) ?
-      "VALID" : "FUCKED");
+  size_t const k[] = {7, 5, 1};
+  printf("%s\n", sim_knot_valid(k, sim->ens.nmemb.dim) ? "VALID" : "FUCKED");
   sim_place_point(sim, sim_placer_knot, k);
 
   if (!save_mut(sim))
     err_abort(save_mut);
+
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 5, 7}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 7, 5}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {5, 1, 7}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {5, 7, 1}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {7, 1, 5}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {7, 5, 1}, 3), "intersection");
 
   dynamic_assert(sim_knot_valid((size_t const[]) {0}, 0), "intersection");
   dynamic_assert(!sim_knot_valid((size_t const[]) {1}, 1), "intersection");
@@ -1280,7 +1286,7 @@ bool sim_run(struct sim* const sim) {
   dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 3}, 3), "intersection");
   dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 4}, 3), "intersection");
   dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3, 3}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {2, 3, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3, 4}, 3), "intersection");
   dynamic_assert(!sim_knot_valid((size_t const[]) {2, 4, 4}, 3), "intersection");
 
   dynamic_assert(!sim_knot_valid((size_t const[]) {3, 3, 3}, 3), "intersection");
