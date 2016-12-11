@@ -395,22 +395,102 @@ void sim_perm_random(struct sim* const sim) {
 }
 
 void sim_placer_point(struct sim* const sim, size_t const ipoly,
-    struct bead const* const r, __attribute__ ((__unused__)) double const d) {
+    struct bead const* const r, __attribute__ ((__unused__)) double const d,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       sim->ens.R[ipoly].r[ibead].d[idim] = r->d[idim];
 }
 
 void sim_placer_random(struct sim* const sim, size_t const ipoly,
-    struct bead const* const r, double const d) {
+    struct bead const* const r, double const d,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       sim->ens.R[ipoly].r[ibead].d[idim] = r->d[idim] +
         ran_open(sim->rng, d / 2.0);
 }
 
-void sim_placer_unknot(struct sim* const sim, size_t const ipoly,
-    struct bead const* const r, double const d) {
+// Let the integers $Z : *$ and the real numbers $R : *$.
+// Let the nonnegative integers $N : *$, the positive integers $P : *$ and
+// the real numbers in the closed unit interval $U : *$.
+// Let the dimension $d : N$.
+// Let the parameters $k : d \to P$ and $\phi : d \to U$.
+// For all $i$ and $t$ let the Lissajous path $r : d \to U \to R$ satisfy
+// $r_i(t) = \cos (\twopi (k_i t + \phi_i))$.
+// For all closed paths $f$
+// let the knot predicate $p : (d \to U \to R) \to 2$ satisfy
+// the following statement: $p(f)$ if and only if
+// for all $i$, $t$ and $u$ the equality $f_i(t) = f_i(u)$ implies $t = u$.
+// Is there an algorithmic construction for $p(r)$?
+//
+// Here is an idea.
+// For all families of positive integers $f$
+// let the pairwise coprimality predicate $c : (d \to P) \to 2$ satisfy
+// the following statement: $c(f)$ if and only if
+// for all $i$ and $j$ the inequality $i < j$ implies that
+// the greatest common divisor of $f_i$ and $f_j$ is $1$.
+//
+// * If $d = 0$ then $p(r) = 1$.
+// * If $d = 1$ then $p(r) = 0$.
+// * If $d = 2$ then probably $p(r)$ if an only if
+//   $k_1 = k_2$ and there does not exist such $z : Z$ that
+//   $2 (\phi_1 - \phi_2) = z$.
+// * If $d = 3$ then perhaps $p(r)$ if an only if
+//   $k$ is coprime and there does not exist such $z : Z$ that
+//   for all $i$ and $j$ the inequality $i < j$ implies that
+//   $2 (k_i \phi_j - k_j \phi_i) = z$.
+//   Counterexamples: $k_i = \{1, 1, 2\}_i$ and $\phi_i = i / 3$,
+//   $k_i = \{1, 5, 7\}_i$ and $\phi_i = i / 3$.
+// * If $d \ge 4$ then the previous case might still work.
+static bool sim_knot_valid(size_t const* const k, size_t const ndim) {
+  for (size_t idim = 0; idim < ndim; ++idim)
+    if (k[idim] == 0)
+      return false;
+
+  switch (ndim) {
+    case 0:
+      return true;
+    case 1:
+      return false;
+    case 2:
+      if (k[0] == k[1])
+        return true;
+      else
+        return false;
+    default:
+      for (size_t idim = 0; idim < ndim; ++idim)
+        for (size_t jdim = idim + 1; jdim < ndim; ++jdim) {
+          // printf("coprimality test: %zu %zu %zu %zu %u\n", idim, jdim, k[idim], k[jdim], size_gcd(k[idim], k[jdim]));
+          if (size_gcd(k[idim], k[jdim]) != 1)
+            return false;
+
+          double const ki = (double) k[idim];
+          double const kj = (double) k[jdim];
+          double const phii = (double) idim / (double) ndim;
+          double const phij = (double) jdim / (double) ndim;
+
+          double const x = 2.0 * (ki * phij - kj * phii);
+
+          // printf("existential check: %zu %zu %zu %zu %g %g %g\n", idim, jdim, k[idim], k[jdim], phii, phij, x);
+          if (fabs(x - nearbyint(x)) < 1e-3)
+            return false;
+        }
+
+      return true;
+  }
+}
+
+void sim_placer_knot(struct sim* const sim, size_t const ipoly,
+    struct bead const* const r, double const d, void const* const p) {
+  double k[DIM_MAX];
+  if (p == NULL)
+    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
+      k[idim] = 1.0;
+  else
+    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
+      k[idim] = (double) ((size_t const*) p)[idim];
+
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
     double const t = (double) ibead / (double) sim->ens.nmemb.bead;
 
@@ -418,28 +498,23 @@ void sim_placer_unknot(struct sim* const sim, size_t const ipoly,
       double const phi = (double) idim / (double) sim->ens.nmemb.dim;
 
       sim->ens.R[ipoly].r[ibead].d[idim] = r->d[idim] +
-        (d / 2.0) * sin(M_2PI * (t + phi / 2.0));
+        d * cos(M_2PI * (k[idim] * t + phi)) / 2.0;
     }
   }
 }
 
-void sim_placer_tinyuk(struct sim* const sim, size_t const ipoly,
-    struct bead const* const r, double const d) {
-  sim_placer_unknot(sim, ipoly, r, d / 2.0);
-}
-
-void sim_place_point(struct sim* const sim,
-    void (* const f)(struct sim*, size_t, struct bead const*, double)) {
+void sim_place_point(struct sim* const sim, sim_placer const f,
+    void const* const p) {
   struct bead r;
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
     r.d[idim] = 0.0;
 
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    f(sim, ipoly, &r, sim->ens.L);
+    f(sim, ipoly, &r, sim->ens.L, p);
 }
 
-void sim_place_random(struct sim* const sim,
-    void (* const f)(struct sim*, size_t, struct bead const*, double)) {
+void sim_place_random(struct sim* const sim, sim_placer const f,
+    void const* const p) {
   double const b = fp_rt(sim->ens.nmemb.poly, sim->ens.nmemb.dim);
 
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
@@ -447,12 +522,12 @@ void sim_place_random(struct sim* const sim,
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       r.d[idim] = ran_open(sim->rng, sim->ens.L / 2.0);
 
-    f(sim, ipoly, &r, sim->ens.L / b);
+    f(sim, ipoly, &r, sim->ens.L / b, p);
   }
 }
 
-void sim_place_lattice(struct sim* const sim,
-    void (* const f)(struct sim*, size_t, struct bead const*, double)) {
+void sim_place_lattice(struct sim* const sim, sim_placer const f,
+    void const* const p) {
   size_t const nlin = size_cirt(sim->ens.nmemb.poly, sim->ens.nmemb.dim);
 
   double const a = -sim->ens.L / 2.0;
@@ -466,7 +541,7 @@ void sim_place_lattice(struct sim* const sim,
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       r.d[idim] = fp_lerp((double) i[idim], 0.0, b, -a, a);
 
-    f(sim, ipoly, &r, sim->ens.L / b);
+    f(sim, ipoly, &r, sim->ens.L / b, p);
   }
 }
 
@@ -651,8 +726,7 @@ static void posdist_accum(struct sim const* const sim) {
 }
 
 static void paircorr_accum(struct sim const* const sim) {
-  size_t const nbin = size_pow(sim->ens.nmemb.subdiv,
-      sim->ens.nmemb.dim);
+  size_t const nbin = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
 
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
@@ -1070,7 +1144,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
 
     sim_mass_const(sim, m);
     sim_perm_close(sim);
-    sim_place_point(sim, sim_placer_point);
+    sim_place_point(sim, sim_placer_point, NULL);
   }
 
   if (p)
@@ -1167,8 +1241,64 @@ bool sim_run(struct sim* const sim) {
   if (!res_close(sim, paramsfp))
     err_abort(res_close);
 
+  size_t const k[] = {1, 2, 3};
+  printf("%s\n", sim_knot_valid(k, sim->ens.nmemb.dim) ?
+      "VALID" : "FUCKED");
+  sim_place_point(sim, sim_placer_knot, k);
+
   if (!save_mut(sim))
     err_abort(save_mut);
+
+  dynamic_assert(sim_knot_valid((size_t const[]) {0}, 0), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1}, 1), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2}, 1), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3}, 1), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {4}, 1), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 3}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 4}, 2), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {2, 2}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 4}, 2), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {3, 3}, 2), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 4}, 2), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {4, 4}, 2), "intersection");
+
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 1}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 2}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 3}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2, 2}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 2, 3}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 3, 3}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 3, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 4, 4}, 3), "intersection");
+
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 2}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 3}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3, 3}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {2, 3, 4}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 4, 4}, 3), "intersection");
+
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 3, 3}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 4, 4}, 3), "intersection");
+
+  dynamic_assert(!sim_knot_valid((size_t const[]) {4, 4, 4}, 3), "intersection");
+
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 3, 5}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 5, 7}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {1, 7, 9}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {2, 3, 5}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {2, 5, 7}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {2, 7, 9}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 5, 7}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 7, 9}, 3), "intersection");
+  dynamic_assert(!sim_knot_valid((size_t const[]) {4, 5, 7}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {4, 7, 9}, 3), "intersection");
+  dynamic_assert(sim_knot_valid((size_t const[]) {5, 7, 9}, 3), "intersection");
 
   if (!print_progress(sim, stdout))
     err_abort(print_progress);

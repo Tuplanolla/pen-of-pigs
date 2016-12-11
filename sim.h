@@ -128,29 +128,29 @@ void sim_perm_chain(struct sim*);
 __attribute__ ((__nonnull__))
 void sim_perm_random(struct sim*);
 
-typedef void (* sim_placer)(struct sim*,
-    size_t, struct bead const*, double);
+typedef void (* sim_placer)(struct sim*, size_t, struct bead const*, double,
+    void const*);
 
-__attribute__ ((__nonnull__))
-void sim_placer_point(struct sim*, size_t, struct bead const*, double);
+__attribute__ ((__nonnull__ (1, 3)))
+void sim_placer_point(struct sim*, size_t, struct bead const*, double,
+    void const*);
 
-__attribute__ ((__nonnull__))
-void sim_placer_random(struct sim*, size_t, struct bead const*, double);
+__attribute__ ((__nonnull__ (1, 3)))
+void sim_placer_random(struct sim*, size_t, struct bead const*, double,
+    void const*);
 
-__attribute__ ((__nonnull__))
-void sim_placer_unknot(struct sim*, size_t, struct bead const*, double);
+__attribute__ ((__nonnull__ (1, 3)))
+void sim_placer_knot(struct sim*, size_t, struct bead const*, double,
+    void const*);
 
-__attribute__ ((__nonnull__))
-void sim_placer_tinyuk(struct sim*, size_t, struct bead const*, double);
+__attribute__ ((__nonnull__ (1, 2)))
+void sim_place_point(struct sim*, sim_placer, void const*);
 
-__attribute__ ((__nonnull__))
-void sim_place_point(struct sim*, sim_placer);
+__attribute__ ((__nonnull__ (1, 2)))
+void sim_place_random(struct sim*, sim_placer, void const*);
 
-__attribute__ ((__nonnull__))
-void sim_place_random(struct sim*, sim_placer);
-
-__attribute__ ((__nonnull__))
-void sim_place_lattice(struct sim*, sim_placer);
+__attribute__ ((__nonnull__ (1, 2)))
+void sim_place_lattice(struct sim*, sim_placer, void const*);
 
 __attribute__ ((__nonnull__))
 void sim_move_accept_ss(struct sim*);

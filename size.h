@@ -109,6 +109,11 @@ void size_hc(size_t, size_t, size_t*, size_t);
 __attribute__ ((__nonnull__, __pure__))
 size_t size_unhc(size_t, size_t const*, size_t);
 
+// The call `size_gcd(n, k)` returns the greatest common divisor of
+// `n` and `k` or `0` if both `n` and `k` are zero.
+__attribute__ ((__const__, __pure__))
+size_t size_gcd(size_t, size_t);
+
 // The call `size_uclamp(n, k)` returns
 //
 // * `n` if `0 <= n < k` and

@@ -114,6 +114,17 @@ size_t size_unhc(size_t const nlin,
   return ilin;
 }
 
+size_t size_gcd(size_t n, size_t k) {
+  while (k != 0) {
+    size_t const m = n % k;
+
+    n = k;
+    k = m;
+  }
+
+  return n;
+}
+
 size_t size_uclamp(size_t const n, size_t const k) {
   return n >= k ? k - 1 : n;
 }

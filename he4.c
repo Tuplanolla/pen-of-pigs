@@ -103,7 +103,7 @@ int main(int const n, char** const x) {
 
   sim_periodic(sim_get_ensem(sim), true);
   sim_set_potint(sim_get_ensem(sim), sim_pot_lj612);
-  sim_place_lattice(sim, sim_placer_tinyuk);
+  sim_place_lattice(sim, sim_placer_knot, NULL);
 
   if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");
