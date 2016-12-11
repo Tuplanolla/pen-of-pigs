@@ -411,76 +411,6 @@ void sim_placer_random(struct sim* const sim, size_t const ipoly,
         ran_open(sim->rng, d / 2.0);
 }
 
-// Let the integers $Z : *$ and the real numbers $R : *$.
-// Let the nonnegative integers $N : *$, the positive integers $P : *$ and
-// the real numbers in the closed unit interval $U : *$.
-// Let the dimension $d : N$.
-// Let the parameters $k : d \to P$ and $\phi : d \to U$.
-// For all $i$ and $t$ let the Lissajous path $r : d \to U \to R$ satisfy
-// $r_i(t) = \cos (\twopi (k_i t + \phi_i))$.
-// For all closed paths $f$
-// let the knot predicate $p : (d \to U \to R) \to 2$ satisfy
-// the following statement: $p(f)$ if and only if
-// for all $i$, $t$ and $u$ the equality $f_i(t) = f_i(u)$ implies $t = u$.
-// Is there an algorithmic construction for $p(r)$?
-//
-// Here is an idea.
-// For all families of positive integers $f$
-// let the pairwise coprimality predicate $c : (d \to P) \to 2$ satisfy
-// the following statement: $c(f)$ if and only if
-// for all $i$ and $j$ the inequality $i < j$ implies that
-// the greatest common divisor of $f_i$ and $f_j$ is $1$.
-//
-// * If $d = 0$ then $p(r) = 1$.
-// * If $d = 1$ then $p(r) = 0$.
-// * If $d = 2$ then probably $p(r)$ if an only if
-//   $k_1 = k_2$ and there does not exist such $z : Z$ that
-//   $2 (\phi_1 - \phi_2) = z$.
-// * If $d = 3$ then perhaps $p(r)$ if an only if
-//   $k$ is coprime and there does not exist such $z : Z$ that
-//   for all $i$ and $j$ the inequality $i < j$ implies that
-//   $2 (k_i \phi_j - k_j \phi_i) = z$.
-//   Counterexamples: $k_i = \{1, 1, 2\}_i$ and $\phi_i = i / 3$,
-//   $k_i = \{1, 5, 7\}_i$ and $\phi_i = i / 3$.
-// * If $d \ge 4$ then the previous case might still work.
-static bool sim_knot_valid(size_t const* const k, size_t const ndim) {
-  for (size_t idim = 0; idim < ndim; ++idim)
-    if (k[idim] == 0)
-      return false;
-
-  switch (ndim) {
-    case 0:
-      return true;
-    case 1:
-      return false;
-    case 2:
-      if (k[0] == k[1])
-        return true;
-      else
-        return false;
-    default:
-      for (size_t idim = 0; idim < ndim; ++idim)
-        for (size_t jdim = idim + 1; jdim < ndim; ++jdim) {
-          // printf("coprimality test: %zu %zu %zu %zu %u\n", idim, jdim, k[idim], k[jdim], size_gcd(k[idim], k[jdim]));
-          if (size_gcd(k[idim], k[jdim]) != 1)
-            return false;
-
-          double const ki = (double) k[idim];
-          double const kj = (double) k[jdim];
-          double const phii = (double) idim / (double) ndim;
-          double const phij = (double) jdim / (double) ndim;
-
-          double const x = 2.0 * (ki * phij - kj * phii);
-
-          // printf("existential check: %zu %zu %zu %zu %g %g %g\n", idim, jdim, k[idim], k[jdim], phii, phij, x);
-          if (fabs(x - nearbyint(x)) < 1e-3)
-            return false;
-        }
-
-      return true;
-  }
-}
-
 void sim_placer_knot(struct sim* const sim, size_t const ipoly,
     struct bead const* const r, double const d, void const* const p) {
   double k[DIM_MAX];
@@ -752,8 +682,7 @@ static void ensem_extents(struct ensem const* const ens,
   }
 }
 
-static bool res_close(
-    __attribute__ ((__unused__)) struct sim const* const sim,
+bool res_close(__attribute__ ((__unused__)) struct sim const* const sim,
     FILE* const fp) {
   if (fclose(fp) == EOF)
     return false;
@@ -761,8 +690,7 @@ static bool res_close(
   return true;
 }
 
-static FILE* res_open(struct sim const* const sim,
-    char const* const str) {
+FILE* res_open(struct sim const* const sim, char const* const str) {
   // Sanity check.
   if (strchr(str, '.') != NULL || strchr(str, '/') != NULL)
     return NULL;
@@ -776,35 +704,38 @@ static FILE* res_open(struct sim const* const sim,
   return fopen(buf, "w");
 }
 
-static bool res_disp(struct sim const* const sim,
-    char const* const str, sim_printer const f) {
+bool res_disp(struct sim const* const sim, char const* const str,
+    sim_printer const f, void const* const p) {
   FILE* const fp = res_open(sim, str);
   if (fp == NULL)
     return false;
 
-  bool const p = f(sim, fp);
+  bool const q = f(sim, fp, p);
 
   if (!res_close(sim, fp))
     return false;
 
-  return p;
+  return q;
 }
 
-static bool print_periodic(struct sim const* const sim, FILE* const fp) {
+bool print_periodic(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%d\n", sim->ens.periodic ? 1 : 0) < 0)
     return false;
 
   return true;
 }
 
-static bool print_length(struct sim const* const sim, FILE* const fp) {
+bool print_length(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%g\n", sim->ens.L) < 0)
     return false;
 
   return true;
 }
 
-static bool print_pots(struct sim const* const sim, FILE* const fp) {
+bool print_pots(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   double a;
   double b;
   ensem_extents(&sim->ens, &a, &b);
@@ -838,35 +769,40 @@ static bool print_pots(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_ndim(struct sim const* const sim, FILE* const fp) {
+bool print_ndim(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu\n", sim->ens.nmemb.dim) < 0)
     return false;
 
   return true;
 }
 
-static bool print_npoly(struct sim const* const sim, FILE* const fp) {
+bool print_npoly(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu\n", sim->ens.nmemb.poly) < 0)
     return false;
 
   return true;
 }
 
-static bool print_nbead(struct sim const* const sim, FILE* const fp) {
+bool print_nbead(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu\n", sim->ens.nmemb.bead) < 0)
     return false;
 
   return true;
 }
 
-static bool print_nsubdiv(struct sim const* const sim, FILE* const fp) {
+bool print_nsubdiv(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu\n", sim->ens.nmemb.subdiv) < 0)
     return false;
 
   return true;
 }
 
-static bool print_energy(struct sim const* const sim, FILE* const fp) {
+bool print_energy(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu %g %g %g\n",
         sim->ens.istep.prod, est_pimc_tde(&sim->ens),
         stats_mean(sim->tde), stats_sem(sim->tde)) < 0)
@@ -875,15 +811,16 @@ static bool print_energy(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_energy_corrtime(struct sim const* const sim,
-    FILE* const fp) {
+bool print_energy_corrtime(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%g\n", stats_corrtime(sim->tde)) < 0)
     return false;
 
   return true;
 }
 
-static bool print_params(struct sim const* const sim, FILE* const fp) {
+bool print_params(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "%zu %zu %zu %zu %g %zu %zu %g\n",
         sim->ens.istep.thrm, sim->ens.istep.prod,
         sim->params.ssm.acc, sim->params.ssm.rej,
@@ -895,7 +832,8 @@ static bool print_params(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_posdist(struct sim const* const sim, FILE* const fp) {
+bool print_posdist(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   double a;
   double b;
   ensem_extents(&sim->ens, &a, &b);
@@ -928,7 +866,8 @@ static bool print_posdist(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_paircorr(struct sim const* const sim, FILE* const fp) {
+bool print_paircorr(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   size_t const nbin = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
 
   size_t N = 0.0;
@@ -962,7 +901,8 @@ static bool print_polys1(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
-static bool print_polys(struct sim const* const sim, FILE* const fp) {
+bool print_polys(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
       if (!print_polys1(sim, fp, ibead, ipoly, ibead))
@@ -979,7 +919,8 @@ static bool print_polys(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_progress(struct sim const* const sim, FILE* const fp) {
+bool print_progress(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   size_t const i = sim->ens.istep.thrm + sim->ens.istep.prod;
   size_t const n = sim->ens.nstep.thrm + sim->ens.nstep.prod;
 
@@ -993,7 +934,8 @@ static bool print_progress(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_results(struct sim const* const sim, FILE* const fp) {
+bool print_results(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
         stats_mean(sim->tde), stats_corrsem(sim->tde),
         stats_corrtime(sim->tde)) < 0)
@@ -1002,8 +944,8 @@ static bool print_results(struct sim const* const sim, FILE* const fp) {
   return true;
 }
 
-static bool print_wrong_results_fast(struct sim const* const sim,
-    FILE* const fp) {
+bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
         stats_mean(sim->tde), 100.0 * stats_sem(sim->tde), 100.0) < 0)
     return false;
@@ -1029,20 +971,20 @@ static bool prepare_save(struct sim const* const sim) {
 }
 
 static bool save_const(struct sim const* const sim) {
-  return res_disp(sim, "periodic", print_periodic) &&
-    res_disp(sim, "length", print_length) &&
-    res_disp(sim, "pots", print_pots) &&
-    res_disp(sim, "ndim", print_ndim) &&
-    res_disp(sim, "npoly", print_npoly) &&
-    res_disp(sim, "nbead", print_nbead) &&
-    res_disp(sim, "nsubdiv", print_nsubdiv);
+  return res_disp(sim, "periodic", print_periodic, NULL) &&
+    res_disp(sim, "length", print_length, NULL) &&
+    res_disp(sim, "pots", print_pots, NULL) &&
+    res_disp(sim, "ndim", print_ndim, NULL) &&
+    res_disp(sim, "npoly", print_npoly, NULL) &&
+    res_disp(sim, "nbead", print_nbead, NULL) &&
+    res_disp(sim, "nsubdiv", print_nsubdiv, NULL);
 }
 
 static bool save_mut(struct sim const* const sim) {
-  return res_disp(sim, "energy-corrtime", print_energy_corrtime) &&
-    res_disp(sim, "posdist", print_posdist) &&
-    res_disp(sim, "paircorr", print_paircorr) &&
-    res_disp(sim, "polys", print_polys);
+  return res_disp(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
+    res_disp(sim, "posdist", print_posdist, NULL) &&
+    res_disp(sim, "paircorr", print_paircorr, NULL) &&
+    res_disp(sim, "polys", print_polys, NULL);
 }
 
 void sim_free(struct sim* const sim) {
@@ -1197,7 +1139,7 @@ bool sim_run(struct sim* const sim) {
     if (sigs_use(&signum))
       switch (signum) {
         case SIGUSR1:
-          (void) print_progress(sim, stdout);
+          (void) print_progress(sim, stdout, NULL);
           break;
         case SIGUSR2:
           (void) save_mut(sim);
@@ -1207,7 +1149,7 @@ bool sim_run(struct sim* const sim) {
     if (istep < sim->ens.nstep.thrm) {
       if (sim->ens.nstep.prodrec * sim->ens.istep.thrm >
           sim->ens.nstep.prod * sim->ens.istep.thrmrec) {
-        if (!print_params(sim, paramsfp))
+        if (!print_params(sim, paramsfp, NULL))
           err_abort(print_params);
 
         ++sim->ens.istep.thrmrec;
@@ -1222,10 +1164,10 @@ bool sim_run(struct sim* const sim) {
 
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {
-        if (!print_energy(sim, energyfp))
+        if (!print_energy(sim, energyfp, NULL))
           err_abort(print_energy);
 
-        if (!print_params(sim, paramsfp))
+        if (!print_params(sim, paramsfp, NULL))
           err_abort(print_params);
 
         ++sim->ens.istep.prodrec;
@@ -1241,75 +1183,13 @@ bool sim_run(struct sim* const sim) {
   if (!res_close(sim, paramsfp))
     err_abort(res_close);
 
-  size_t const k[] = {7, 5, 1};
-  printf("%s\n", sim_knot_valid(k, sim->ens.nmemb.dim) ? "VALID" : "FUCKED");
-  sim_place_point(sim, sim_placer_knot, k);
-
   if (!save_mut(sim))
     err_abort(save_mut);
 
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 5, 7}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 7, 5}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {5, 1, 7}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {5, 7, 1}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {7, 1, 5}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {7, 5, 1}, 3), "intersection");
-
-  dynamic_assert(sim_knot_valid((size_t const[]) {0}, 0), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1}, 1), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2}, 1), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3}, 1), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {4}, 1), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 3}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 4}, 2), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {2, 2}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 4}, 2), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {3, 3}, 2), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 4}, 2), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {4, 4}, 2), "intersection");
-
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 1}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 2}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 3}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 1, 4}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2, 2}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 2, 3}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 2, 4}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 3, 3}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 3, 4}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {1, 4, 4}, 3), "intersection");
-
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 2}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 3}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 2, 4}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3, 3}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 3, 4}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {2, 4, 4}, 3), "intersection");
-
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 3, 3}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 4, 4}, 3), "intersection");
-
-  dynamic_assert(!sim_knot_valid((size_t const[]) {4, 4, 4}, 3), "intersection");
-
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 3, 5}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 5, 7}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {1, 7, 9}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {2, 3, 5}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {2, 5, 7}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {2, 7, 9}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 5, 7}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {3, 7, 9}, 3), "intersection");
-  dynamic_assert(!sim_knot_valid((size_t const[]) {4, 5, 7}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {4, 7, 9}, 3), "intersection");
-  dynamic_assert(sim_knot_valid((size_t const[]) {5, 7, 9}, 3), "intersection");
-
-  if (!print_progress(sim, stdout))
+  if (!print_progress(sim, stdout, NULL))
     err_abort(print_progress);
 
-  if (!print_wrong_results_fast(sim, stdout))
+  if (!print_wrong_results_fast(sim, stdout, NULL))
     err_abort(print_wrong_results_fast);
 
 #ifdef _GNU_SOURCE

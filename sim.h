@@ -216,67 +216,64 @@ static void paircorr_accum(struct sim const*);
 __attribute__ ((__nonnull__))
 static void ensem_extents(struct ensem const*, double*, double*);
 
-typedef bool (* sim_printer)(struct sim const*, FILE*);
+typedef bool (* sim_printer)(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool res_close(struct sim const*, FILE*);
+bool res_close(struct sim const*, FILE*);
 
 __attribute__ ((__nonnull__))
-static FILE* res_open(struct sim const*, char const*);
+FILE* res_open(struct sim const*, char const*);
 
 __attribute__ ((__nonnull__))
-static bool res_print(struct sim const*, char const*, sim_printer);
+bool res_print(struct sim const*, char const*, sim_printer, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_length(struct sim const*, FILE*);
+bool print_length(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_periodic(struct sim const*, FILE*);
+bool print_periodic(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_pots(struct sim const*, FILE*);
+bool print_pots(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_ndim(struct sim const*, FILE*);
+bool print_ndim(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_npoly(struct sim const*, FILE*);
+bool print_npoly(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_nbead(struct sim const*, FILE*);
+bool print_nbead(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_nsubdiv(struct sim const*, FILE*);
+bool print_nsubdiv(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_energy(struct sim const*, FILE*);
+bool print_energy(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_energy_corrtime(struct sim const*, FILE*);
+bool print_energy_corrtime(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_params(struct sim const*, FILE*);
+bool print_params(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_posdist(struct sim const*, FILE*);
+bool print_posdist(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_paircorr(struct sim const*, FILE*);
+bool print_paircorr(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_polys1(struct sim const*, FILE*, size_t, size_t, size_t);
+bool print_polys(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_polys(struct sim const*, FILE*);
+bool print_progress(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_progress(struct sim const*, FILE*);
+bool print_results(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
-static bool print_results(struct sim const*, FILE*);
-
-__attribute__ ((__nonnull__))
-static bool print_wrong_results_fast(struct sim const*, FILE*);
+bool print_wrong_results_fast(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
 static bool prepare_save(struct sim const*);
