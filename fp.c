@@ -60,16 +60,28 @@ double fp_clamp(double const x, double const a, double const b) {
   return x < a ? a : x >= b ? b : x;
 }
 
+double fp_sclamp(double const x, double const b) {
+  double const a = b / 2.0;
+
+  return x < -a ? a : x >= a ? a : x;
+}
+
 double fp_uclamp(double const x, double const b) {
-  return fp_clamp(x, 0.0, b);
+  return x < 0.0 ? 0.0: x >= b ? b : x;
 }
 
-double fp_wrap(double const x, double const y) {
-  return x - y * nearbyint(x / y);
+double fp_wrap(double const x, double const a, double const b) {
+  double const c = b - a;
+
+  return x - c * floor((x - a) / c);
 }
 
-double fp_uwrap(double const x, double const y) {
-  return x - y * floor(x / y);
+double fp_swrap(double const x, double const b) {
+  return x - b * nearbyint(x / b);
+}
+
+double fp_uwrap(double const x, double const b) {
+  return x - b * floor(x / b);
 }
 
 double fp_lerp(double const x,

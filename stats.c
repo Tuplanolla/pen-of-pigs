@@ -1,7 +1,6 @@
 #include "stats.h"
 #include <gsl/gsl_statistics_double.h>
 #include <math.h>
-#include <stdint.h>
 #include <stdlib.h>
 
 struct stats {
@@ -31,17 +30,14 @@ struct stats* stats_alloc(size_t const N) {
   struct stats* const stats = malloc(sizeof *stats);
   if (stats == NULL)
     p = false;
-  else if (N >= SIZE_MAX / sizeof *stats->x)
-    p = false;
   else {
+    stats->N = N;
+
     stats->x = malloc(N * sizeof *stats->x);
     if (stats->x == NULL)
       p = false;
-    else {
-      stats->N = N;
-
+    else
       stats_forget(stats);
-    }
   }
 
   if (p)

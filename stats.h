@@ -24,11 +24,12 @@ struct stats* stats_alloc(size_t);
 // The call `stats_accum(stats, x)` adds `x` to the statistics `stats` and
 // returns `true` if the maximum number of samples has not been reached.
 // Otherwise `false` is returned.
+// The time complexity is $O(1)$.
 __attribute__ ((__nonnull__))
 bool stats_accum(struct stats*, double);
 
 // The call `stats_n(stats)` returns
-// the number of samples of the statistics `stats`.
+// the number of samples in the statistics `stats`.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 size_t stats_n(struct stats const*);

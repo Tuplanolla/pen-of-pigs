@@ -94,14 +94,13 @@ int main(int const n, char** const x) {
 
   struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
-      1.0, 1.0, 100.0);
+      true, 1.0, 1.0, 100.0);
   if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 
     return EXIT_FAILURE;
   }
 
-  sim_periodic(sim_get_ensem(sim), true);
   sim_set_potint(sim_get_ensem(sim), sim_pot_lj612);
   sim_place_lattice(sim, sim_placer_knot, NULL);
 

@@ -42,12 +42,8 @@ __attribute__ ((__nonnull__, __pure__))
 double sim_dist(struct ensem const*, struct bead const*, struct bead const*);
 
 // The call `sim_get_ensem(sim)` returns the ensemble of the simulation `sim`.
+__attribute__ ((__nonnull__, __pure__))
 struct ensem* sim_get_ensem(struct sim*);
-
-// The call `sim_periodic(ens, p)` sets the periodicity
-// of the ensemble `ens` to `p`.
-__attribute__ ((__nonnull__))
-void sim_periodic(struct ensem*, bool);
 
 typedef double (* sim_pot)(struct ensem const*,
     struct bead const*, struct bead const*);
@@ -224,55 +220,55 @@ bool res_close(struct sim const*, FILE*);
 __attribute__ ((__nonnull__))
 FILE* res_open(struct sim const*, char const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2, 3)))
 bool res_print(struct sim const*, char const*, sim_printer, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_length(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_periodic(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_pots(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_ndim(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_npoly(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_nbead(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_nsubdiv(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_energy(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_energy_corrtime(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_params(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_posdist(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_paircorr(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_polys(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_progress(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_results(struct sim const*, FILE*, void const*);
 
-__attribute__ ((__nonnull__))
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_wrong_results_fast(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__))
@@ -288,8 +284,7 @@ void sim_free(struct sim*);
 
 __attribute__ ((__malloc__))
 struct sim* sim_alloc(size_t, size_t, size_t, size_t,
-    size_t, size_t, size_t, size_t,
-    double, double, double);
+    size_t, size_t, size_t, size_t, bool, double, double, double);
 
 // The call `sim_run(sim)` is magic.
 __attribute__ ((__nonnull__))

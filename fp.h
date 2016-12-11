@@ -85,10 +85,16 @@ double fp_rt(double, double);
 // * `x` if `a <= x < b`,
 // * `a` if `x < a` and
 // * `b` if `x >= b`.
-//
-// This is equivalent to `fp_uclamp(x, b)` when `a == 0`.
 __attribute__ ((__const__, __pure__))
 double fp_clamp(double, double, double);
+
+// The call `fp_sclamp(x, b)` returns
+//
+// * `x` if `-b / 2 <= x < b / 2`,
+// * `-b / 2` if `x < b / 2` and
+// * `b` if `x >= b / 2`.
+__attribute__ ((__const__, __pure__))
+double fp_sclamp(double, double);
 
 // The call `fp_uclamp(x, b)` returns
 //
@@ -100,15 +106,21 @@ double fp_clamp(double, double, double);
 __attribute__ ((__const__, __pure__))
 double fp_uclamp(double, double);
 
-// The statement `z = fp_wrap(x, y)` solves
-// the periodic equation `z == x + n * y` for `z`,
-// where `-y / 2 <= z < y / 2` and `n` is some integer.
+// The statement `z = fp_wrap(x, a, b)` solves
+// the periodic equation `z == x - a + n * a` for `z`,
+// where `a <= z < b` and `n` is some integer.
 __attribute__ ((__const__, __pure__))
-double fp_wrap(double, double);
+double fp_wrap(double, double, double);
 
-// The statement `z = fp_uwrap(x, y)` solves
-// the periodic equation `z == x + n * y` for `z`,
-// where `0 <= z < y` and `n` is some integer.
+// The statement `z = fp_swrap(x, b)` solves
+// the periodic equation `z == x + n * b` for `z`,
+// where `-b / 2 <= z < b / 2` and `n` is some integer.
+__attribute__ ((__const__, __pure__))
+double fp_swrap(double, double);
+
+// The statement `z = fp_uwrap(x, b)` solves
+// the periodic equation `z == x + n * b` for `z`,
+// where `0 <= z < b` and `n` is some integer.
 // This is analogous to `size_uwrap`.
 __attribute__ ((__const__, __pure__))
 double fp_uwrap(double, double);

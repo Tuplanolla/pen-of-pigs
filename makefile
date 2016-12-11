@@ -4,7 +4,7 @@ ifeq ($(CC), clang)
 ifeq ($(CONFIG), debug)
 flags=-D_GNU_SOURCE -DDEBUG -O0 -g \
 	-Weverything \
-	-Wno-disabled-macro-expansion \
+	-Wno-bad-function-cast -Wno-disabled-macro-expansion \
 	-Wno-aggregate-return -Wno-covered-switch-default -Wno-unused-function
 endif
 ifeq ($(CONFIG), release)
@@ -67,10 +67,10 @@ plots.tex: energy.tex paircorr.tex params.tex proj.tex \
 	polys-3.tex
 	./plotgen $(basename $^) > $@
 
-he4: he4.o err.o fp.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
+he4: he4.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-qho: qho.o err.o fp.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
+qho: qho.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.tex: %.gp

@@ -102,7 +102,7 @@ int main(int const n, char** const x) {
 
   struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
-      10.0, 1.0, beta);
+      false, 10.0, 1.0, beta);
   if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 

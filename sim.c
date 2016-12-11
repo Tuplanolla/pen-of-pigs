@@ -1,6 +1,7 @@
 #include "err.h"
 #include "exts.h"
 #include "fp.h"
+#include "hist.h"
 #include "lims.h"
 #include "ran.h"
 #include "sigs.h"
@@ -66,6 +67,8 @@ struct poly {
 struct ensem {
   bool periodic;
   double L;
+  double a;
+  double b;
   double tau;
   sim_pot Vint;
   sim_pot Vend;
@@ -79,9 +82,10 @@ struct ensem {
 // This structure contains all the necessary bookkeeping.
 struct sim {
   gsl_rng* rng;
+  struct ensem ens;
   struct stats* tde;
-  size_t* p;
-  size_t* g;
+  struct hist* p;
+  struct hist* g;
   sim_decider accept;
   sim_decider reject;
   sim_decider adjust;
@@ -95,7 +99,7 @@ struct sim {
       size_t ipoly;
       struct poly R;
     } cmd;
-  } hist;
+  } past;
   struct {
     struct {
       size_t acc;
@@ -108,9 +112,10 @@ struct sim {
       double h;
     } cmd;
   } params;
-  struct ensem ens;
   char id[BUFSIZ];
 };
+
+typedef double (* sim_wrapper)(double, double);
 
 double sim_pot_zero(
     __attribute__ ((__unused__)) struct ensem const* const ens,
@@ -125,12 +130,10 @@ double sim_potext_zero(
   return 0.0;
 }
 
-double sim_norm2(struct ensem const* const ens,
-    struct bead const* const r) {
+double sim_norm2(struct ensem const* const ens, struct bead const* const r) {
   double s = 0.0;
 
-  double (* const f)(double, double) =
-    ens->periodic ? fp_wrap : fp_constant;
+  sim_wrapper const f = ens->periodic ? fp_swrap : fp_constant;
 
   for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
     s += gsl_pow_2(f(r->d[idim], ens->L));
@@ -138,8 +141,7 @@ double sim_norm2(struct ensem const* const ens,
   return s;
 }
 
-double sim_norm(struct ensem const* const ens,
-    struct bead const* const r) {
+double sim_norm(struct ensem const* const ens, struct bead const* const r) {
   return sqrt(sim_norm2(ens, r));
 }
 
@@ -147,8 +149,7 @@ double sim_dist2(struct ensem const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
   double s = 0.0;
 
-  double (* const f)(double, double) =
-    ens->periodic ? fp_wrap : fp_constant;
+  sim_wrapper const f = ens->periodic ? fp_swrap : fp_constant;
 
   for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
     s += gsl_pow_2(f(r1->d[idim] - r0->d[idim], ens->L));
@@ -165,24 +166,15 @@ struct ensem* sim_get_ensem(struct sim* const sim) {
   return &sim->ens;
 }
 
-void sim_periodic(struct ensem* const ens, bool const p) {
-  ens->periodic = p;
-}
-
-void sim_set_potint(struct ensem* const ens,
-    double (* const V)(struct ensem const*,
-      struct bead const*, struct bead const*)) {
+void sim_set_potint(struct ensem* const ens, sim_pot const V) {
   ens->Vint = V;
 }
 
-void sim_set_potend(struct ensem* const ens,
-    double (* const V)(struct ensem const*,
-      struct bead const*, struct bead const*)) {
+void sim_set_potend(struct ensem* const ens, sim_pot const V) {
   ens->Vend = V;
 }
 
-void sim_set_potext(struct ensem* const ens,
-    double (* const V)(struct ensem const*, struct bead const*)) {
+void sim_set_potext(struct ensem* const ens, sim_potext const V) {
   ens->Vext = V;
 }
 
@@ -445,7 +437,8 @@ void sim_place_point(struct sim* const sim, sim_placer const f,
 
 void sim_place_random(struct sim* const sim, sim_placer const f,
     void const* const p) {
-  double const b = fp_rt(sim->ens.nmemb.poly, sim->ens.nmemb.dim);
+  double const b = fp_rt((double) sim->ens.nmemb.poly,
+      (double) sim->ens.nmemb.dim);
 
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     struct bead r;
@@ -480,11 +473,11 @@ void sim_move_accept_ss(struct sim* const sim) {
 }
 
 void sim_move_reject_ss(struct sim* const sim) {
-  size_t const ipoly = sim->hist.ssm.ipoly;
-  size_t const ibead = sim->hist.ssm.ibead;
+  size_t const ipoly = sim->past.ssm.ipoly;
+  size_t const ibead = sim->past.ssm.ibead;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
-    sim->ens.R[ipoly].r[ibead].d[idim] = sim->hist.ssm.r.d[idim];
+    sim->ens.R[ipoly].r[ibead].d[idim] = sim->past.ssm.r.d[idim];
 
   ++sim->params.ssm.rej;
 }
@@ -501,14 +494,13 @@ void sim_move_ss(struct sim* const sim,
   sim->reject = sim_move_reject_ss;
   sim->adjust = sim_move_adjust_ss;
 
-  sim->hist.ssm.ipoly = ipoly;
-  sim->hist.ssm.ibead = ibead;
+  sim->past.ssm.ipoly = ipoly;
+  sim->past.ssm.ibead = ibead;
 
-  double (* const f)(double, double) =
-    sim->ens.periodic ? fp_uwrap : fp_constant;
+  sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
-    sim->hist.ssm.r.d[idim] = sim->ens.R[ipoly].r[ibead].d[idim];
+    sim->past.ssm.r.d[idim] = sim->ens.R[ipoly].r[ibead].d[idim];
 
     sim->ens.R[ipoly].r[ibead].d[idim] =
       f(sim->ens.R[ipoly].r[ibead].d[idim] +
@@ -521,12 +513,12 @@ void sim_move_accept_cmd(struct sim* const sim) {
 }
 
 void sim_move_reject_cmd(struct sim* const sim) {
-  size_t const ipoly = sim->hist.cmd.ipoly;
+  size_t const ipoly = sim->past.cmd.ipoly;
 
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       sim->ens.R[ipoly].r[ibead].d[idim] =
-        sim->hist.cmd.R.r[ibead].d[idim];
+        sim->past.cmd.R.r[ibead].d[idim];
 
   ++sim->params.cmd.rej;
 }
@@ -542,17 +534,16 @@ void sim_move_cmd(struct sim* const sim, size_t const ipoly) {
   sim->reject = sim_move_reject_cmd;
   sim->adjust = sim_move_adjust_cmd;
 
-  sim->hist.cmd.ipoly = ipoly;
+  sim->past.cmd.ipoly = ipoly;
 
-  double (* const f)(double, double) =
-    sim->ens.periodic ? fp_uwrap : fp_constant;
+  sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
     double const x = sim->params.cmd.h *
       ran_open(sim->rng, 1.0);
 
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-      sim->hist.cmd.R.r[ibead].d[idim] =
+      sim->past.cmd.R.r[ibead].d[idim] =
         sim->ens.R[ipoly].r[ibead].d[idim];
 
       sim->ens.R[ipoly].r[ibead].d[idim] =
@@ -635,53 +626,6 @@ static void decide(struct sim* const sim, double const DeltaS) {
   sim->adjust(sim);
 }
 
-static void posdist_accum(struct sim const* const sim) {
-  double a;
-  double b;
-  ensem_extents(&sim->ens, &a, &b);
-
-  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-      size_t i[DIM_MAX];
-
-      for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
-        i[idim] = size_uclamp(
-            (size_t) (floor(fp_lerp(sim->ens.R[ipoly].r[ibead].d[idim],
-                  a, b, 0.0, (double) sim->ens.nmemb.subdiv))),
-            sim->ens.nmemb.subdiv);
-
-      ++sim->p[size_unhc(sim->ens.nmemb.subdiv, i,
-          sim->ens.nmemb.dim)];
-    }
-}
-
-static void paircorr_accum(struct sim const* const sim) {
-  size_t const nbin = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
-
-  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
-      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-        size_t const i = size_uclamp(
-            (size_t) (floor(fp_lerp(sim_dist(&sim->ens,
-                    &sim->ens.R[ipoly].r[ibead],
-                    &sim->ens.R[jpoly].r[ibead]),
-                  0.0, (double) sim->ens.L, 0.0, (double) nbin))), nbin);
-
-        ++sim->g[i];
-      }
-}
-
-static void ensem_extents(struct ensem const* const ens,
-    double* const a, double* const b) {
-  if (ens->periodic) {
-    *a = 0.0;
-    *b = ens->L;
-  } else {
-    *a = -ens->L / 2.0;
-    *b = ens->L / 2.0;
-  }
-}
-
 bool res_close(__attribute__ ((__unused__)) struct sim const* const sim,
     FILE* const fp) {
   if (fclose(fp) == EOF)
@@ -704,7 +648,7 @@ FILE* res_open(struct sim const* const sim, char const* const str) {
   return fopen(buf, "w");
 }
 
-bool res_disp(struct sim const* const sim, char const* const str,
+bool res_print(struct sim const* const sim, char const* const str,
     sim_printer const f, void const* const p) {
   FILE* const fp = res_open(sim, str);
   if (fp == NULL)
@@ -736,10 +680,6 @@ bool print_length(struct sim const* const sim, FILE* const fp,
 
 bool print_pots(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  double a;
-  double b;
-  ensem_extents(&sim->ens, &a, &b);
-
   size_t const npt = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
 
   struct bead r0;
@@ -751,10 +691,9 @@ bool print_pots(struct sim const* const sim, FILE* const fp,
     size_hc(ipt, sim->ens.nmemb.subdiv, i, sim->ens.nmemb.dim);
 
     struct bead r;
-
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       r.d[idim] = fp_lerp((double) i[idim],
-          0.0, (double) sim->ens.nmemb.subdiv, a, b);
+          0.0, (double) sim->ens.nmemb.subdiv, sim->ens.a, sim->ens.b);
 
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       if (fprintf(fp, "%g ", r.d[idim]) < 0)
@@ -834,32 +773,17 @@ bool print_params(struct sim const* const sim, FILE* const fp,
 
 bool print_posdist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  double a;
-  double b;
-  ensem_extents(&sim->ens, &a, &b);
-
-  size_t const nbin = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
-
-  size_t N = 0;
-  for (size_t ibin = 0; ibin < nbin; ++ibin)
-    N += sim->p[ibin];
-  double const S = (N == 0 ? 1.0 : (double) N) * sim->ens.L;
+  size_t const nbin = hist_nbin(sim->p);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
-    size_t i[DIM_MAX];
-    size_hc(ibin, sim->ens.nmemb.subdiv, i, sim->ens.nmemb.dim);
-
     struct bead r;
-
-    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
-      r.d[idim] = fp_lerp((double) i[idim] + 0.5,
-          0.0, (double) sim->ens.nmemb.subdiv, a, b);
+    hist_unbindex(sim->p, r.d, ibin);
 
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       if (fprintf(fp, "%g ", r.d[idim]) < 0)
         return false;
 
-    if (fprintf(fp, "%g\n", (double) sim->p[ibin] / S) < 0)
+    if (fprintf(fp, "%g\n", hist_normhits(sim->p, ibin)) < 0)
       return false;
   }
 
@@ -868,25 +792,20 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
 
 bool print_paircorr(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const nbin = size_pow(sim->ens.nmemb.subdiv, sim->ens.nmemb.dim);
-
-  size_t N = 0.0;
-  for (size_t ibin = 0; ibin < nbin; ++ibin)
-    N += sim->g[ibin];
-  double const S = N == 0 ? 1.0 : (double) N;
+  size_t const nbin = hist_nbin(sim->g);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
-    double const r = fp_lerp((double) ibin + 0.5,
-        0.0, (double) nbin, 0.0, sim->ens.L);
+    double r;
+    hist_unbindex(sim->g, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, (double) sim->g[ibin] / S) < 0)
+    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->g, ibin)) < 0)
       return false;
   }
 
   return true;
 }
 
-static bool print_polys1(struct sim const* const sim, FILE* const fp,
+static bool print_polys_bead(struct sim const* const sim, FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
   if (fprintf(fp, "%g", (double) iindex * sim->ens.tau) < 0)
     return false;
@@ -905,11 +824,12 @@ bool print_polys(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
-      if (!print_polys1(sim, fp, ibead, ipoly, ibead))
+      if (!print_polys_bead(sim, fp, ibead, ipoly, ibead))
         return false;
 
     if (sim->ens.R[ipoly].ito != SIZE_MAX)
-      if (!print_polys1(sim, fp, sim->ens.nmemb.bead, sim->ens.R[ipoly].ito, 0))
+      if (!print_polys_bead(sim, fp,
+            sim->ens.nmemb.bead, sim->ens.R[ipoly].ito, 0))
         return false;
 
     if (fprintf(fp, "\n") < 0)
@@ -924,8 +844,8 @@ bool print_progress(struct sim const* const sim, FILE* const fp,
   size_t const i = sim->ens.istep.thrm + sim->ens.istep.prod;
   size_t const n = sim->ens.nstep.thrm + sim->ens.nstep.prod;
 
-  if (fprintf(fp, "(i_T + i_P) / (n_T + n_P) = "
-        "(%zu + %zu) / (%zu + %zu) = %zu %%\n",
+  if (fprintf(fp,
+        "(i_T + i_P) / (n_T + n_P) = (%zu + %zu) / (%zu + %zu) = %zu %%\n",
         sim->ens.istep.thrm, sim->ens.istep.prod,
         sim->ens.nstep.thrm, sim->ens.nstep.prod,
         n == 0 ? 100 : 100 * i / n) < 0)
@@ -971,26 +891,26 @@ static bool prepare_save(struct sim const* const sim) {
 }
 
 static bool save_const(struct sim const* const sim) {
-  return res_disp(sim, "periodic", print_periodic, NULL) &&
-    res_disp(sim, "length", print_length, NULL) &&
-    res_disp(sim, "pots", print_pots, NULL) &&
-    res_disp(sim, "ndim", print_ndim, NULL) &&
-    res_disp(sim, "npoly", print_npoly, NULL) &&
-    res_disp(sim, "nbead", print_nbead, NULL) &&
-    res_disp(sim, "nsubdiv", print_nsubdiv, NULL);
+  return res_print(sim, "periodic", print_periodic, NULL) &&
+    res_print(sim, "length", print_length, NULL) &&
+    res_print(sim, "pots", print_pots, NULL) &&
+    res_print(sim, "ndim", print_ndim, NULL) &&
+    res_print(sim, "npoly", print_npoly, NULL) &&
+    res_print(sim, "nbead", print_nbead, NULL) &&
+    res_print(sim, "nsubdiv", print_nsubdiv, NULL);
 }
 
 static bool save_mut(struct sim const* const sim) {
-  return res_disp(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
-    res_disp(sim, "posdist", print_posdist, NULL) &&
-    res_disp(sim, "paircorr", print_paircorr, NULL) &&
-    res_disp(sim, "polys", print_polys, NULL);
+  return res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
+    res_print(sim, "posdist", print_posdist, NULL) &&
+    res_print(sim, "paircorr", print_paircorr, NULL) &&
+    res_print(sim, "polys", print_polys, NULL);
 }
 
 void sim_free(struct sim* const sim) {
   if (sim != NULL) {
-    free(sim->g);
-    free(sim->p);
+    hist_free(sim->g);
+    hist_free(sim->p);
 
     stats_free(sim->tde);
 
@@ -1004,7 +924,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     size_t const nbead, size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
-    double const L, double const m, double const beta) {
+    bool const periodic, double const L, double const m, double const beta) {
   // These assertions guarantee that adding or multiplying two steps or indices
   // never wraps around, which makes their manipulation easier.
   dynamic_assert(ndim <= DIM_MAX, "too many dimensions");
@@ -1030,39 +950,17 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     else if (!ran_dateid(sim->rng, "run", sim->id, sizeof sim->id))
       p = false;
 
-    sim->accept = NULL;
-    sim->reject = NULL;
-    sim->adjust = NULL;
-
-    sim->tde = stats_alloc(nprod);
-    if (sim->tde == NULL)
-      p = false;
-
-    size_t const nbin = size_pow(nsubdiv, ndim);
-    sim->p = malloc(nbin * sizeof *sim->p);
-    if (sim->p == NULL)
-      p = false;
-    else
-      for (size_t ibin = 0; ibin < nbin; ++ibin)
-        sim->p[ibin] = 0.0;
-
-    sim->g = malloc(nbin * sizeof *sim->g);
-    if (sim->g == NULL)
-      p = false;
-    else
-      for (size_t ibin = 0; ibin < nbin; ++ibin)
-        sim->g[ibin] = 0.0;
-
-    sim->params.ssm.acc = 0;
-    sim->params.ssm.rej = 0;
-    sim->params.ssm.h = L / 2.0;
-
-    sim->params.cmd.acc = 0;
-    sim->params.cmd.rej = 0;
-    sim->params.cmd.h = L / 2.0;
-
-    sim->ens.periodic = false;
+    sim->ens.periodic = periodic;
     sim->ens.L = L;
+
+    if (periodic) {
+      sim->ens.a = 0.0;
+      sim->ens.b = L;
+    } else {
+      sim->ens.a = -L / 2.0;
+      sim->ens.b = L / 2.0;
+    }
+
     sim->ens.tau = beta / (double) nbead;
 
     sim->ens.Vint = sim_pot_zero;
@@ -1084,6 +982,30 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->ens.istep.thrmrec = 0;
     sim->ens.istep.prodrec = 0;
 
+    sim->accept = NULL;
+    sim->reject = NULL;
+    sim->adjust = NULL;
+
+    sim->tde = stats_alloc(nprod);
+    if (sim->tde == NULL)
+      p = false;
+
+    sim->p = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
+    if (sim->p == NULL)
+      p = false;
+
+    sim->g = hist_alloc(1, size_pow(nsubdiv, ndim), 0.0, L);
+    if (sim->g == NULL)
+      p = false;
+
+    sim->params.ssm.acc = 0;
+    sim->params.ssm.rej = 0;
+    sim->params.ssm.h = L / 2.0;
+
+    sim->params.cmd.acc = 0;
+    sim->params.cmd.rej = 0;
+    sim->params.cmd.h = L / 2.0;
+
     sim_mass_const(sim, m);
     sim_perm_close(sim);
     sim_place_point(sim, sim_placer_point, NULL);
@@ -1096,6 +1018,23 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
 
     return NULL;
   }
+}
+
+static void posdist_accum(struct sim const* const sim) {
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+      (void) hist_accum(sim->p, sim->ens.R[ipoly].r[ibead].d);
+}
+
+static void paircorr_accum(struct sim const* const sim) {
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
+      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+        double const d = sim_dist(&sim->ens,
+            &sim->ens.R[ipoly].r[ibead], &sim->ens.R[jpoly].r[ibead]);
+
+        (void) hist_accum(sim->g, &d);
+      }
 }
 
 bool sim_run(struct sim* const sim) {
