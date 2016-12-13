@@ -1,7 +1,7 @@
 set terminal epslatex
 set output 'polys-3.tex'
 d = `cat 'run-latest/ndim.data'`
-if (d != 3) {exit}
+if (d < 3) {exit}
 periodic = `cat 'run-latest/periodic.data'`
 L = `cat 'run-latest/length.data'`
 set xlabel '$x$'

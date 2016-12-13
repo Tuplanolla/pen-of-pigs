@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static double const epsilon = 4.0;
-static double const sigma = 1.0;
+static double const epsilon = 2.0;
+static double const sigma = 0.2;
 
 __attribute__ ((__nonnull__, __pure__))
 static double pot_lj612(struct ens const* const ens,
@@ -18,9 +18,9 @@ static double pot_lj612(struct ens const* const ens,
   if (d == 0.0)
     return INFINITY;
   else {
-    double const sigmar2 = gsl_pow_2(sigma) / d;
+    double const sigmad2 = gsl_pow_2(sigma) / d;
 
-    return 4.0 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
+    return 4.0 * epsilon * (gsl_pow_6(sigmad2) - gsl_pow_3(sigmad2));
   }
 }
 
@@ -94,7 +94,7 @@ int main(int const argc, char** const argv) {
 
   struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
-      true, 1.0, 1.0, 100.0);
+      true, L, 1.0, 100.0);
   if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 
@@ -102,8 +102,8 @@ int main(int const argc, char** const argv) {
   }
 
   sim_set_potint(sim, pot_lj612);
-  sim_place_lattice(sim, sim_placer_knot, NULL);
   sim_perm_open(sim, NULL);
+  sim_place_random(sim, sim_placer_point, NULL);
 
   if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

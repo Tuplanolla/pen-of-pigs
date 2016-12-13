@@ -243,8 +243,7 @@ double ens_potint_bead(struct ens const* const ens, size_t const ibead) {
 
   for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < ens->nmemb.poly; ++jpoly)
-      V += ens->Vint(ens,
-          &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[ibead]);
+      V += ens->Vint(ens, &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[ibead]);
 
   return V;
 }
@@ -805,7 +804,8 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r1;
     hist_cunbin(sim->g, &r1, ibin);
 
-    double const r = fp_midpoint(r0, r1);
+    double r;
+    hist_unbin(sim->g, &r, ibin);
 
     double const v = fp_ballvol(r1, sim->ens.nmemb.dim) -
       fp_ballvol(r0, sim->ens.nmemb.dim);
@@ -1024,7 +1024,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     if (sim->p == NULL)
       p = false;
 
-    sim->g = hist_alloc(1, size_pow(nsubdiv, ndim), 0.0, L);
+    sim->g = hist_alloc(1, size_pow(nsubdiv, ndim), 0.0, L / 2.0);
     if (sim->g == NULL)
       p = false;
 

@@ -9,8 +9,8 @@ set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$V$'
 unset key
-set hidden3d
 set xyplane relative 0.1
+set hidden3d
 set dgrid3d K, K
 set zrange [-50 < * : * < 50]
 if (periodic) {

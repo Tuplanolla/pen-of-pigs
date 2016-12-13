@@ -308,7 +308,7 @@ __attribute__ ((__nonnull__ (1, 2)))
 bool print_posdist(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
-bool print_paircorr(struct sim const*, FILE*, void const*);
+bool print_raddist(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
 bool print_polys(struct sim const*, FILE*, void const*);
