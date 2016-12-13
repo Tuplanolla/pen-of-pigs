@@ -11,7 +11,7 @@ static double const epsilon = 4.0;
 static double const sigma = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double ens_pot_lj612(struct ens const* const ens,
+static double pot_lj612(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
   double const d = ens_dist2(ens, r0, r1);
 
@@ -25,7 +25,7 @@ static double ens_pot_lj612(struct ens const* const ens,
 }
 
 __attribute__ ((__nonnull__))
-int main(int const n, char** const x) {
+int main(int const argc, char** const argv) {
   char const* const shortstr = "d:N:M:K:h:p:H:P:L:";
   char const* const longstr[] = {
     "ndim", "npoly", "nbead", "nsubdiv",
@@ -44,7 +44,7 @@ int main(int const n, char** const x) {
   double L = 1.0;
 
   for ever {
-    int const i = opt_parse(n, x, shortstr, longstr);
+    int const i = opt_parse(argc, argv, shortstr, longstr);
     if (i == -1)
       break;
 
@@ -101,8 +101,9 @@ int main(int const n, char** const x) {
     return EXIT_FAILURE;
   }
 
-  sim_set_potint(sim, ens_pot_lj612);
+  sim_set_potint(sim, pot_lj612);
   sim_place_lattice(sim, sim_placer_knot, NULL);
+  sim_perm_open(sim, NULL);
 
   if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

@@ -80,6 +80,8 @@ struct sim {
   gsl_rng* rng;
   struct ens ens;
   struct stats* tde;
+  struct stats* gtde;
+  struct stats* mixed;
   struct hist* p;
   struct hist* g;
   sim_decider accept;
@@ -218,8 +220,7 @@ double ens_kin_polybead(struct ens const* const ens,
     ens_kin_polybead_fw(ens, ipoly, ibead);
 }
 
-double ens_kin_poly(struct ens const* const ens,
-    size_t const ipoly) {
+double ens_kin_poly(struct ens const* const ens, size_t const ipoly) {
   double K = 0.0;
 
   for (size_t ibead = 0; ibead < ens->nmemb.bead; ++ibead)
@@ -237,8 +238,7 @@ double ens_kin_total(struct ens const* const ens) {
   return K;
 }
 
-double ens_potint_bead(struct ens const* const ens,
-    size_t const ibead) {
+double ens_potint_bead(struct ens const* const ens, size_t const ibead) {
   double V = 0.0;
 
   for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
@@ -249,8 +249,7 @@ double ens_potint_bead(struct ens const* const ens,
   return V;
 }
 
-double ens_potend_bead(struct ens const* const ens,
-    size_t const ibead) {
+double ens_potend_bead(struct ens const* const ens, size_t const ibead) {
   double V = 0.0;
 
   if (ibead == 0) {
@@ -285,8 +284,7 @@ double ens_potext_bead(struct ens const* const ens, size_t const ibead) {
   return V;
 }
 
-double ens_pot_bead(struct ens const* const ens,
-    size_t const ibead) {
+double ens_pot_bead(struct ens const* const ens, size_t const ibead) {
   return ens_potint_bead(ens, ibead) + ens_potend_bead(ens, ibead) +
     ens_potext_bead(ens, ibead);
 }
@@ -300,10 +298,10 @@ double ens_pot_total(struct ens const* const ens) {
   return V;
 }
 
+// TODO Using `nmemb.poly` may be wrong here.
 double ens_est_pimc_tde(struct ens const* const ens,
     __attribute__ ((__unused__)) void const* const p) {
-  double const E = (double) (ens->nmemb.dim * ens->nmemb.poly) /
-    (2.0 * ens->tau);
+  double const E = (double) ens->nmemb.dim / (2.0 * ens->tau);
   double const K = ens_kin_total(ens) /
     (double) (ens->nmemb.poly * ens->nmemb.bead);
   double const V = ens_pot_total(ens) /
@@ -312,16 +310,31 @@ double ens_est_pimc_tde(struct ens const* const ens,
   return E - K + V;
 }
 
-double ens_est_pigs_tde(
-    __attribute__ ((__unused__)) struct ens const* const ens,
-    __attribute__ ((__unused__)) void const* const p) {
-  return NAN;
+// TODO Between ends: $S = -\log \Psi_T$.
+double ens_est_pigs_tde(struct ens const* const ens, void const* const p) {
+  size_t const ibead = *((size_t const*) p);
+
+  double const E = (double) (ens->nmemb.dim * ens->nmemb.poly) /
+    (2.0 * ens->tau);
+  double K = 0.0;
+  double const V = ens_pot_bead(ens, ibead);
+
+  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
+    K += ens_kin_polybead(ens, ipoly, ibead) / 2.0;
+
+  return E - K + V;
 }
 
-double ens_est_pigs_crap(
-    __attribute__ ((__unused__)) struct ens const* const ens,
-    __attribute__ ((__unused__)) void const* const p) {
-  return NAN;
+double ens_est_pigs_mixed(struct ens const* const ens, void const* const p) {
+  size_t const ibead = *((size_t const*) p);
+
+  double V = 0.0;
+
+  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
+    V += // -(ddPsiT / PsiT) / (2.0 * ens->R[ipoly].m) +
+      ens->Vext(ens, &ens->R[ipoly].r[ibead]);
+
+  return V;
 }
 
 void sim_weight_const(struct sim* const sim, void const* const p) {
@@ -727,9 +740,15 @@ bool print_nsubdiv(struct sim const* const sim, FILE* const fp,
 
 bool print_energy(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  if (fprintf(fp, "%zu %g %g %g\n",
-        sim->ens.istep.prod, ens_est_pimc_tde(&sim->ens, NULL),
-        stats_mean(sim->tde), stats_sem(sim->tde)) < 0)
+  size_t const ibead = sim->ens.nmemb.bead / 2;
+
+  if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n", sim->ens.istep.prod,
+        ens_est_pimc_tde(&sim->ens, NULL),
+        stats_mean(sim->tde), stats_sem(sim->tde),
+        ens_est_pigs_tde(&sim->ens, &ibead),
+        stats_mean(sim->gtde), stats_sem(sim->gtde),
+        ens_est_pigs_mixed(&sim->ens, &ibead),
+        stats_mean(sim->mixed), stats_sem(sim->mixed)) < 0)
     return false;
 
   return true;
@@ -762,7 +781,7 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     struct bead r;
-    hist_unbindex(sim->p, r.d, ibin);
+    hist_unbin(sim->p, r.d, ibin);
 
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       if (fprintf(fp, "%g ", r.d[idim]) < 0)
@@ -775,15 +794,23 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
-bool print_paircorr(struct sim const* const sim, FILE* const fp,
+bool print_raddist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const nbin = hist_nbin(sim->g);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
-    double r;
-    hist_unbindex(sim->g, &r, ibin);
+    double r0;
+    hist_funbin(sim->g, &r0, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->g, ibin)) < 0)
+    double r1;
+    hist_cunbin(sim->g, &r1, ibin);
+
+    double const r = fp_midpoint(r0, r1);
+
+    double const v = fp_ballvol(r1, sim->ens.nmemb.dim) -
+      fp_ballvol(r0, sim->ens.nmemb.dim);
+
+    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->g, ibin) * v) < 0)
       return false;
   }
 
@@ -852,8 +879,15 @@ bool print_results(struct sim const* const sim, FILE* const fp,
 
 bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
-        stats_mean(sim->tde), 100.0 * stats_sem(sim->tde), 100.0) < 0)
+  if (fprintf(fp, "E_T = %g +- %g (kappa = %g)\n"
+        "E_L = %g +- %g (kappa = %g)\n"
+        "E_M = %g +- %g (kappa = %g)\n",
+        // ens_est_pimc_tde
+        stats_mean(sim->tde), 100.0 * stats_sem(sim->tde), 100.0,
+        // ens_est_pigs_tde
+        stats_mean(sim->gtde), 100.0 * stats_sem(sim->gtde), 100.0,
+        // ens_est_pigs_mixed
+        stats_mean(sim->mixed), 100.0 * stats_sem(sim->mixed), 100.0) < 0)
     return false;
 
   return true;
@@ -889,7 +923,7 @@ bool sim_save_const(struct sim const* const sim) {
 bool sim_save_mut(struct sim const* const sim) {
   return sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
     sim_res_print(sim, "posdist", print_posdist, NULL) &&
-    sim_res_print(sim, "paircorr", print_paircorr, NULL) &&
+    sim_res_print(sim, "raddist", print_raddist, NULL) &&
     sim_res_print(sim, "polys", print_polys, NULL);
 }
 
@@ -898,6 +932,8 @@ void sim_free(struct sim* const sim) {
     hist_free(sim->g);
     hist_free(sim->p);
 
+    stats_free(sim->mixed);
+    stats_free(sim->gtde);
     stats_free(sim->tde);
 
     gsl_rng_free(sim->rng);
@@ -976,6 +1012,14 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     if (sim->tde == NULL)
       p = false;
 
+    sim->gtde = stats_alloc(nprod);
+    if (sim->gtde == NULL)
+      p = false;
+
+    sim->mixed = stats_alloc(nprod);
+    if (sim->mixed == NULL)
+      p = false;
+
     sim->p = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
     if (sim->p == NULL)
       p = false;
@@ -1014,7 +1058,7 @@ static void posdist_accum(struct sim const* const sim) {
 }
 
 __attribute__ ((__nonnull__))
-static void paircorr_accum(struct sim const* const sim) {
+static void raddist_accum(struct sim const* const sim) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
@@ -1057,6 +1101,9 @@ bool sim_run(struct sim* const sim) {
   sim_proposer const proposers[] = {sim_propose_ss, sim_propose_cmd};
   size_t const nproposer = sizeof proposers / sizeof *proposers;
 
+  // TODO For lazy testing.
+  // sim_perm_open(sim, NULL);
+
   for (size_t istep = 0;
       istep < sim->ens.nstep.thrm + sim->ens.nstep.prod;
       ++istep) {
@@ -1086,8 +1133,14 @@ bool sim_run(struct sim* const sim) {
     } else {
       (void) stats_accum(sim->tde, ens_est_pimc_tde(&sim->ens, NULL));
 
+      // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+      size_t const ibead = sim->ens.nmemb.bead / 2;
+      (void) stats_accum(sim->gtde, ens_est_pigs_tde(&sim->ens, &ibead));
+      (void) stats_accum(sim->mixed, ens_est_pigs_mixed(&sim->ens, &ibead));
+      // }
+
       posdist_accum(sim);
-      paircorr_accum(sim);
+      raddist_accum(sim);
 
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {

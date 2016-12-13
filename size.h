@@ -19,7 +19,7 @@ size_t size_identity(size_t);
 __attribute__ ((__const__, __pure__))
 size_t size_zero(size_t);
 
-// The call `k = size_one(n)` returns `1`.
+// The call `size_one(n)` returns `1`.
 // This is analogous to `fp_one`.
 __attribute__ ((__const__, __pure__))
 size_t size_one(size_t);
@@ -54,12 +54,12 @@ typedef struct {
 __attribute__ ((__const__, __pure__))
 size_div_t size_div(size_t, size_t);
 
-// The statement `size_min(n, k)` returns the lesser of `n` and `k`.
+// The call `size_min(n, k)` returns the lesser of `n` and `k`.
 // This is analogous to `fmin`.
 __attribute__ ((__const__, __pure__))
 size_t size_min(size_t, size_t);
 
-// The statement `size_max(n, k)` returns the greater of `n` and `k`.
+// The call `size_max(n, k)` returns the greater of `n` and `k`.
 // This is analogous to `fmax`.
 __attribute__ ((__const__, __pure__))
 size_t size_max(size_t, size_t);

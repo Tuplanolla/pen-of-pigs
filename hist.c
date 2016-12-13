@@ -7,18 +7,18 @@
 
 struct hist {
   size_t* m;
-  size_t* t;
-  size_t d;
-  size_t N;
-  size_t M;
+  size_t* tmp;
+  size_t ndim;
+  size_t nlin;
+  size_t ncub;
   double a;
   double b;
-  size_t n;
+  size_t nsum;
 };
 
 void hist_free(struct hist* const hist) {
   if (hist != NULL) {
-    free(hist->t);
+    free(hist->tmp);
 
     free(hist->m);
   }
@@ -27,13 +27,13 @@ void hist_free(struct hist* const hist) {
 }
 
 void hist_forget(struct hist* const hist) {
-  for (size_t i = 0; i < hist->M; ++i)
+  for (size_t i = 0; i < hist->ncub; ++i)
     hist->m[i] = 0;
 
-  hist->n = 0;
+  hist->nsum = 0;
 }
 
-struct hist* hist_alloc(size_t const d, size_t const N,
+struct hist* hist_alloc(size_t const ndim, size_t const nlin,
     double const a, double const b) {
   bool p = true;
 
@@ -41,20 +41,20 @@ struct hist* hist_alloc(size_t const d, size_t const N,
   if (hist == NULL)
     p = false;
   else {
-    hist->d = d;
-    hist->N = N;
-    hist->M = size_pow(N, d);
+    hist->ndim = ndim;
+    hist->nlin = nlin;
+    hist->ncub = size_pow(nlin, ndim);
     hist->a = a;
     hist->b = b;
 
-    hist->m = malloc(hist->M * sizeof *hist->m);
+    hist->m = malloc(hist->ncub * sizeof *hist->m);
     if (hist->m == NULL)
       p = false;
     else
       hist_forget(hist);
 
-    hist->t = malloc(d * sizeof *hist->t);
-    if (hist->t == NULL)
+    hist->tmp = malloc(ndim * sizeof *hist->tmp);
+    if (hist->tmp == NULL)
       p = false;
   }
 
@@ -67,50 +67,66 @@ struct hist* hist_alloc(size_t const d, size_t const N,
   }
 }
 
-size_t hist_bindex(struct hist const* const hist, double const* const x) {
-  for (size_t i = 0; i < hist->d; ++i)
+size_t hist_bin(struct hist const* const hist, double const* const x) {
+  for (size_t i = 0; i < hist->ndim; ++i)
     if (x[i] >= hist->a && x[i] < hist->b)
-      hist->t[i] = size_uclamp((size_t) floor(fp_lerp(x[i],
-              hist->a, hist->b, 0.0, (double) hist->N)), hist->N);
+      hist->tmp[i] = size_uclamp((size_t) floor(fp_lerp(x[i],
+              hist->a, hist->b, 0.0, (double) hist->nlin)), hist->nlin);
     else
       return SIZE_MAX;
 
-  return size_unhc(hist->N, hist->t, hist->d);
+  return size_unhc(hist->nlin, hist->tmp, hist->ndim);
 }
 
-void hist_unbindex(struct hist const* const hist, double* const x,
-    size_t const j) {
-  size_hc(j, hist->M, hist->t, hist->d);
+__attribute__ ((__nonnull__))
+static void unbin(struct hist const* const hist, double* const x,
+    size_t const j, double const h) {
+  size_hc(j, hist->nlin, hist->tmp, hist->ndim);
 
-  for (size_t i = 0; i < hist->d; ++i)
-    x[i] = fp_lerp((double) hist->t[i] + 0.5,
-        0.0, (double) hist->N, hist->a, hist->b);
+  for (size_t i = 0; i < hist->ndim; ++i)
+    x[i] = fp_lerp((double) hist->tmp[i] + h,
+        0.0, (double) hist->nlin, hist->a, hist->b);
+}
+
+void hist_unbin(struct hist const* const hist, double* const x,
+    size_t const j) {
+  unbin(hist, x, j, 0.5);
+}
+
+void hist_funbin(struct hist const* const hist, double* const x,
+    size_t const j) {
+  unbin(hist, x, j, 0.0);
+}
+
+void hist_cunbin(struct hist const* const hist, double* const x,
+    size_t const j) {
+  unbin(hist, x, j, 1.0);
 }
 
 bool hist_accum(struct hist* const hist, double const* const x) {
-  size_t const i = hist_bindex(hist, x);
+  size_t const i = hist_bin(hist, x);
 
   if (i == SIZE_MAX)
     return false;
   else {
     ++hist->m[i];
 
-    ++hist->n;
+    ++hist->nsum;
 
     return true;
   }
 }
 
 size_t hist_ndim(struct hist const* const hist) {
-  return hist->d;
+  return hist->ndim;
 }
 
 size_t hist_nsubdiv(struct hist const* const hist) {
-  return hist->N;
+  return hist->nlin;
 }
 
 size_t hist_nbin(struct hist const* const hist) {
-  return hist->M;
+  return hist->ncub;
 }
 
 double hist_min(struct hist const* const hist) {
@@ -126,9 +142,9 @@ size_t hist_hits(struct hist const* const hist, size_t const i) {
 }
 
 size_t hist_sumhits(struct hist const* const hist) {
-  return hist->n;
+  return hist->nsum;
 }
 
 double hist_normhits(struct hist const* const hist, size_t const i) {
-  return hist->n == 0 ? 0.0 : (double) hist->m[i] / (double) hist->n;
+  return hist->nsum == 0 ? 0.0 : (double) hist->m[i] / (double) hist->nsum;
 }

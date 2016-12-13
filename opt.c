@@ -9,10 +9,10 @@
 
 #include <getopt.h>
 
-int opt_parse(int const n, char* const* const x, char const* const shortstr,
-    char const* const* const longstr) {
+int opt_parse(int const argc, char* const* const argv,
+    char const* const shortstr, char const* const* const longstr) {
   if (longstr == NULL)
-    return getopt(n, x, shortstr);
+    return getopt(argc, argv, shortstr);
   else {
     size_t m = 0;
 
@@ -36,7 +36,7 @@ int opt_parse(int const n, char* const* const x, char const* const shortstr,
       i += k + 1;
     }
 
-    int const i = getopt_long(n, x, shortstr, longopt, NULL);
+    int const i = getopt_long(argc, argv, shortstr, longopt, NULL);
 
     free(longopt);
 
@@ -46,9 +46,10 @@ int opt_parse(int const n, char* const* const x, char const* const shortstr,
 
 #else
 
-int opt_parse(int const n, char* const* const x, char const* const shortstr,
+int opt_parse(int const argc, char* const* const argv,
+    char const* const shortstr,
     __attribute__ ((__unused__)) char const* const* const longstr) {
-  return getopt(n, x, shortstr);
+  return getopt(argc, argv, shortstr);
 }
 
 #endif

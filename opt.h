@@ -2,10 +2,11 @@
 #define OPT_H
 
 #include "exts.h"
+#include <stdbool.h>
 #include <stddef.h>
 
-// The statement `i = opt_parse(n, x, shortstr, longstr)` parses one argument
-// from the command-line argument array `x` of length `n`,
+// The statement `i = opt_parse(argc, argv, shortstr, longstr)` parses
+// one argument from the command-line argument array `argv` of length `argc`,
 // where `shortstr` contains the short options
 // in a format understood by `getopt` and
 // `longstr` either contains the corresponding long options or is `NULL`,

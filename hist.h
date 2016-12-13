@@ -15,26 +15,38 @@ void hist_free(struct hist*);
 __attribute__ ((__nonnull__))
 void hist_forget(struct hist*);
 
-// The statement `hist = hist_alloc(d, n, a, b)` allocates memory
-// for managing the histogram `hist` of `d` dimensions,
-// `n` bins per dimension and a range from `a` to `b`.
+// The statement `hist = hist_alloc(ndim, nlin, a, b)` allocates memory
+// for managing the histogram `hist` of `ndim` dimensions,
+// `nlin` bins per dimension and a range from `a` to `b`.
 // When `hist` is no longer used, `hist_free` should be called on it.
 __attribute__ ((__malloc__))
 struct hist* hist_alloc(size_t, size_t, double, double);
 
-// The call `hist_bindex(hist, x)` returns
+// The call `hist_bin(hist, x)` returns
 // the index of the bin for `x` in the histogram `hist`
 // if `x` is in the valid range.
 // Otherwise `SIZE_MAX` is returned.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
-size_t hist_bindex(struct hist const*, double const*);
+size_t hist_bin(struct hist const*, double const*);
 
-// The call `hist_unbindex(hist, x, i)` writes
-// the center of the bin `i` in the histogram `hist` into `x`.
+// The call `hist_unbin(hist, x, i)` writes
+// the center of the bin `i` from the histogram `hist` into `x`.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__))
-void hist_unbindex(struct hist const*, double*, size_t);
+void hist_unbin(struct hist const*, double*, size_t);
+
+// The call `hist_funbin(hist, x, i)` writes
+// the minimum of the bin `i` from the histogram `hist` into `x`.
+// The time complexity is $O(1)$.
+__attribute__ ((__nonnull__))
+void hist_funbin(struct hist const*, double*, size_t);
+
+// The call `hist_cunbin(hist, x, i)` writes
+// the maximum of the bin `i` from the histogram `hist` into `x`.
+// The time complexity is $O(1)$.
+__attribute__ ((__nonnull__))
+void hist_cunbin(struct hist const*, double*, size_t);
 
 // The call `hist_accum(hist, x)` adds `x` to the histogram `hist` and
 // returns `true` if `x` is in the valid range.

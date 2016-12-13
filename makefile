@@ -57,7 +57,7 @@ shallow-clean:
 plots.pdf: plots.tex
 	pdflatex $<
 
-plots.tex: energy.tex paircorr.tex params.tex proj.tex \
+plots.tex: energy.tex raddist.tex params.tex proj.tex \
 	posdist-1.tex pots-1.tex \
 	polys-2.tex posdist-2.tex pots-2.tex \
 	polys-3.tex

@@ -2,6 +2,7 @@
 #define FP_H
 
 #include "exts.h"
+#include <stddef.h>
 
 #define M_2PI 6.283185307179586
 
@@ -55,12 +56,12 @@ typedef struct {
 __attribute__ ((__const__, __pure__))
 fp_div_t fp_div(double, double);
 
-// The statement `fp_min(x, y)` returns the lesser of `x` and `y`.
+// The call `fp_min(x, y)` returns the lesser of `x` and `y`.
 // This is analogous to `fmin` or `size_min`.
 __attribute__ ((__const__, __pure__))
 double fp_min(double, double);
 
-// The statement `fp_max(x, y)` returns the greater of `x` and `y`.
+// The call `fp_max(x, y)` returns the greater of `x` and `y`.
 // This is analogous to `fmax` or `size_max`.
 __attribute__ ((__const__, __pure__))
 double fp_max(double, double);
@@ -131,10 +132,21 @@ double fp_uwrap(double, double);
 __attribute__ ((__const__, __pure__))
 double fp_lerp(double, double, double, double, double);
 
-// The statement `y = fp_lorp(x, x0, x1, y0, y1)` is equivalent to
+// The statement `y = fp_lorp(x, x0, x1, y0, y1)` solves
+// the logarithmic interpolation equation and is equivalent to
 // `y = log(fp_lerp(exp(x), exp(x0), exp(x1), exp(y0), exp(y1)))`.
 __attribute__ ((__const__, __pure__))
 double fp_lorp(double, double, double, double, double);
+
+// The call `fp_ballvol(r, d)` returns the volume
+// of the `d`-dimensional ball of radius `r`.
+__attribute__ ((__const__, __pure__))
+double fp_ballvol(double, size_t);
+
+// The call `fp_ballsa(r, d)` returns the surface area
+// of the `d`-dimensional ball of radius `r`.
+__attribute__ ((__const__, __pure__))
+double fp_ballsa(double, size_t);
 
 // The statement `b = fp_dbalance(a, r)` sets `b` such that
 //

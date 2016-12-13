@@ -2,7 +2,6 @@
 #define ERR_H
 
 #include "exts.h"
-#include <stdbool.h>
 #include <stdlib.h>
 
 // The call `err_reset()` initializes the timing mechanism
@@ -31,18 +30,20 @@ void err_reset(void);
 __attribute__ ((__nonnull__ (1, 2)))
 void err_msg_with(char const*, char const*, size_t, char const*);
 
-// The preprocessor directive `err_msg(p)` prints a detailed error message
+// The preprocessor directive `err_msg(ptr)` prints a detailed error message
 // to the standard error output stream,
-// where the pointer `p` may be `NULL` or
+// where the pointer `ptr` may be `NULL` or
 // point to the procedure or variable that caused the error.
-// See `err_msg_with(p)` for details.
-#define err_msg(p) BEGIN \
-  err_msg_with(__func__, __FILE__, (size_t) __LINE__, (p) == NULL ? NULL : #p); \
+// See `err_msg_with(ptr)` for details.
+#define err_msg(ptr) BEGIN \
+  err_msg_with(__func__, __FILE__, (size_t) __LINE__, \
+      (ptr) == NULL ? NULL : #ptr); \
 END
 
-// The call `err_abort(p)` is equivalent to `err_msg(p)` followed by `abort()`.
-#define err_abort(p) BEGIN \
-  err_msg(p); \
+// The call `err_abort(ptr)` is equivalent
+// to `err_msg(ptr)` followed by `abort()`.
+#define err_abort(ptr) BEGIN \
+  err_msg(ptr); \
   abort(); \
 END
 

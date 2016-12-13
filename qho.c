@@ -7,27 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static double const epsilon = 4.0;
-static double const sigma = 1.0;
-
-__attribute__ ((__nonnull__, __pure__))
-static double ens_pot_lj612(struct ens const* const ens,
-    struct bead const* const r0, struct bead const* const r1) {
-  double const sigmar2 = gsl_pow_2(sigma) / ens_dist2(ens, r0, r1);
-
-  return 4.0 * epsilon * (gsl_pow_6(sigmar2) - gsl_pow_3(sigmar2));
-}
-
 static double const omega = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double ens_potext_harm(struct ens const* const ens,
+static double potext_harm(struct ens const* const ens,
     struct bead const* const r) {
   return gsl_pow_2(omega) * ens_norm2(ens, r) / 2.0;
 }
 
 __attribute__ ((__nonnull__))
-int main(int const n, char** const x) {
+int main(int const argc, char** const argv) {
   char const* const shortstr = "d:N:M:K:h:p:H:P:T:";
   char const* const longstr[] = {
     "ndim", "npoly", "nbead", "nsubdiv",
@@ -46,7 +35,7 @@ int main(int const n, char** const x) {
   double T = 1.0;
 
   for ever {
-    int const i = opt_parse(n, x, shortstr, longstr);
+    int const i = opt_parse(argc, argv, shortstr, longstr);
     if (i == -1)
       break;
 
@@ -109,7 +98,7 @@ int main(int const n, char** const x) {
     return EXIT_FAILURE;
   }
 
-  sim_set_potext(sim, ens_potext_harm);
+  sim_set_potext(sim, potext_harm);
 
   if (!sim_run(sim)) {
     (void) fprintf(stderr, "Failed to run simulation.\n");

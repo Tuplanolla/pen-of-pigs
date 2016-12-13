@@ -13,15 +13,15 @@ set hidden3d
 set xyplane relative 0.1
 set dgrid3d K, K
 if (periodic) {
-  set xrange [0.0 - L / 2.0 : L + L / 2.0]
-  set yrange [0.0 - L / 2.0 : L + L / 2.0]
+  set xrange [-L / 2.0 : L + L / 2.0]
+  set yrange [-L / 2.0 : L + L / 2.0]
   splot for [dx = -L : L : L] for [dy = -L : L : L] \
     'run-latest/posdist.data' using \
     ($1 + dx) : ($1 + dy) : 3 \
     with lines linetype 1
 } else {
-  set xrange [0.0 - L / 2.0 : 0.0 + L / 2.0]
-  set yrange [0.0 - L / 2.0 : 0.0 + L / 2.0]
+  set xrange [-L / 2.0 : L / 2.0]
+  set yrange [-L / 2.0 : L / 2.0]
   splot 'run-latest/posdist.data' using 1 : 2 : 3 \
     with lines linetype 1
 }

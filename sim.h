@@ -127,7 +127,7 @@ double ens_est_pigs_tde(struct ens const*, void const*);
 
 // TODO Crap energy estimator for open polymers.
 __attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pigs_crap(struct ens const*, void const*);
+double ens_est_pigs_mixed(struct ens const*, void const*);
 
 // The call `sim_set_potint(sim, f)` sets `f`
 // as the internal (polymer-to-polymer) potential of the simulation `sim`.

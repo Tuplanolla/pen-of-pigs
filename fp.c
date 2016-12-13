@@ -1,6 +1,8 @@
 #include "exts.h"
 #include "fp.h"
+#include <gsl/gsl_math.h>
 #include <math.h>
+#include <stddef.h>
 
 double fp_identity(double const x) {
   return x;
@@ -94,6 +96,28 @@ double fp_lorp(double const x,
   return log(fp_lerp(exp(x), exp(x0), exp(x1), exp(y0), exp(y1)));
 }
 
+// The recurrence relation
+// $V_0(r) = 1$, $V_1(r) = 2 r$, $V_n(r) = (\twopi r^2 / n) V_{n - 2}(r)
+// is applied.
+double fp_ballvol(double const r, size_t d) {
+  double v = d % 2 == 0 ? 1.0 : 2.0 * r;
+
+  while (d > 1) {
+    v *= M_2PI * gsl_pow_2(r) / (double) d;
+    d -= 2;
+  }
+
+  return v;
+}
+
+// The recurrence relation
+// $V_0(r) = 1$, $V_n(r) = (r / n) A_{n - 1}(r)$,
+// $A_0(r) = 2$, $A_n(r) = \twopi r V_{n - 1}(r)$
+// is applied.
+double fp_ballsa(double const r, size_t const d) {
+  return d == 0 ? 2.0 : M_2PI * r * fp_ballvol(r, d - 1);
+}
+
 double fp_dbalance(double const a, double const r) {
   return 0.5 + a / (a + r);
 }
@@ -101,4 +125,3 @@ double fp_dbalance(double const a, double const r) {
 double fp_cbalance(double const a, double const r) {
   return 1.0 - exp(-a) + exp(-r);
 }
-
