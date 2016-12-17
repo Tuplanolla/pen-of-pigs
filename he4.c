@@ -26,11 +26,11 @@ static double pot_lj612(struct ens const* const ens,
 
 __attribute__ ((__nonnull__))
 int main(int const argc, char** const argv) {
-  char const* const shortstr = "d:N:M:K:h:p:H:P:L:";
+  char const* const shortstr = "d:N:M:K:h:p:H:P:L:t:";
   char const* const longstr[] = {
     "ndim", "npoly", "nbead", "nsubdiv",
     "nthrm", "nprod", "nthrmrec", "nprodrec",
-    "length"
+    "length", "imagtime"
   };
 
   size_t ndim = 1;
@@ -42,6 +42,7 @@ int main(int const argc, char** const argv) {
   size_t nthrmrec = 0;
   size_t nprodrec = 0;
   double L = 1.0;
+  double tau = 1.0;
 
   for ever {
     int const i = opt_parse(argc, argv, shortstr, longstr);
@@ -85,6 +86,10 @@ int main(int const argc, char** const argv) {
         if (opt_parse_fp(&L, 0.0, INFINITY))
           continue;
         break;
+      case 't':
+        if (opt_parse_fp(&tau, 0.0, INFINITY))
+          continue;
+        break;
     }
 
     (void) fprintf(stderr, "Failed to parse argument list.\n");
@@ -94,7 +99,7 @@ int main(int const argc, char** const argv) {
 
   struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
       nthrm, nprod, nthrmrec, nprodrec,
-      true, L, 1.0, 100.0);
+      true, L, 1.0, tau);
   if (sim == NULL) {
     (void) fprintf(stderr, "Failed to allocate memory.\n");
 

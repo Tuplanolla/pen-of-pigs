@@ -66,7 +66,7 @@ struct ens {
   double L;
   double a;
   double b;
-  double tau;
+  double epsilon;
   ens_pot Vint;
   ens_pot Vend;
   ens_potext Vext;
@@ -174,7 +174,7 @@ void sim_set_potext(struct sim* const sim, ens_potext const V) {
 
 double ens_kin_polybead_bw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
-  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->tau));
+  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
 
   if (ibead == 0) {
     size_t const jpoly = ens->R[ipoly].ifrom;
@@ -195,7 +195,7 @@ double ens_kin_polybead_bw(struct ens const* const ens,
 
 double ens_kin_polybead_fw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
-  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->tau));
+  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
 
   if (ibead == ens->nmemb.bead - 1) {
     size_t const jpoly = ens->R[ipoly].ito;
@@ -300,7 +300,7 @@ double ens_pot_total(struct ens const* const ens) {
 // TODO Using `nmemb.poly` may be wrong here.
 double ens_est_pimc_tde(struct ens const* const ens,
     __attribute__ ((__unused__)) void const* const p) {
-  double const E = (double) ens->nmemb.dim / (2.0 * ens->tau);
+  double const E = (double) ens->nmemb.dim / (2.0 * ens->epsilon);
   double const K = ens_kin_total(ens) /
     (double) (ens->nmemb.poly * ens->nmemb.bead);
   double const V = ens_pot_total(ens) /
@@ -314,7 +314,7 @@ double ens_est_pigs_tde(struct ens const* const ens, void const* const p) {
   size_t const ibead = *((size_t const*) p);
 
   double const E = (double) (ens->nmemb.dim * ens->nmemb.poly) /
-    (2.0 * ens->tau);
+    (2.0 * ens->epsilon);
   double K = 0.0;
   double const V = ens_pot_bead(ens, ibead);
 
@@ -599,7 +599,7 @@ double sim_propose_ss(struct sim* const sim) {
     ens_potext_polybead(&sim->ens, ipoly, ibead);
   double const K1 = ens_kin_polybead(&sim->ens, ipoly, ibead);
 
-  return sim->ens.tau * (K1 + V1 - K0 - V0);
+  return sim->ens.epsilon * (K1 + V1 - K0 - V0);
 }
 
 double sim_propose_cmd(struct sim* const sim) {
@@ -611,7 +611,7 @@ double sim_propose_cmd(struct sim* const sim) {
 
   double const V1 = ens_pot_total(&sim->ens);
 
-  return sim->ens.tau * (V1 - V0);
+  return sim->ens.epsilon * (V1 - V0);
 }
 
 void sim_decide_mq(struct sim* const sim, double const DeltaS) {
@@ -820,7 +820,7 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
 __attribute__ ((__nonnull__))
 static bool print_polys_bead(struct sim const* const sim, FILE* const fp,
     size_t const iindex, size_t const ipoly, size_t const ibead) {
-  if (fprintf(fp, "%g", (double) iindex * sim->ens.tau) < 0)
+  if (fprintf(fp, "%g", (double) iindex * sim->ens.epsilon) < 0)
     return false;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
@@ -893,19 +893,33 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
-bool sim_prepare_dirs(struct sim const* const sim) {
+bool sim_fini_fs(struct sim const* const sim) {
   // Sanity check.
   if (strncmp(sim->id, "run", 3) != 0)
     err_abort(strncmp);
 
-  if (symlink(sim->id, sim->id) == -1)
+  if (symlink(sim->id, "run-temp") == -1)
     err_abort(symlink);
 
-  if (rename(sim->id, "run-latest") == -1)
+  if (rename("run-temp", "run-latest") == -1)
     err_abort(rename);
+
+  return true;
+}
+
+bool sim_init_fs(struct sim const* const sim) {
+  // Sanity check.
+  if (strncmp(sim->id, "run", 3) != 0)
+    err_abort(strncmp);
 
   if (mkdir(sim->id, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1)
     err_abort(mkdir);
+
+  if (symlink(sim->id, "run-temp") == -1)
+    err_abort(symlink);
+
+  if (rename("run-temp", "run-current") == -1)
+    err_abort(rename);
 
   return true;
 }
@@ -946,7 +960,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     size_t const nbead, size_t const nsubdiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
-    bool const periodic, double const L, double const m, double const beta) {
+    bool const periodic, double const L, double const m, double const betau) {
   // These assertions guarantee that adding or multiplying two steps or indices
   // never wraps around, which makes their manipulation easier.
   dynamic_assert(ndim <= DIM_MAX, "too many dimensions");
@@ -958,7 +972,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
   dynamic_assert(nprodrec <= nprod, "too many production recording steps");
   dynamic_assert(L > 0.0, "empty simulation box");
   dynamic_assert(m > 0.0, "negative default mass");
-  dynamic_assert(beta > 0.0, "weird things going on");
+  dynamic_assert(betau > 0.0, "weird things going on");
 
   bool p = true;
 
@@ -983,7 +997,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
       sim->ens.b = L / 2.0;
     }
 
-    sim->ens.tau = beta / (double) nbead;
+    sim->ens.epsilon = betau / (double) nbead;
 
     sim->ens.Vint = ens_pot_zero;
     sim->ens.Vend = ens_pot_zero;
@@ -1008,15 +1022,15 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->reject = sim_move_null;
     sim->adjust = sim_move_null;
 
-    sim->tde = stats_alloc(nprod);
+    sim->tde = stats_alloc(nprod, true);
     if (sim->tde == NULL)
       p = false;
 
-    sim->gtde = stats_alloc(nprod);
+    sim->gtde = stats_alloc(nprod, true);
     if (sim->gtde == NULL)
       p = false;
 
-    sim->mixed = stats_alloc(nprod);
+    sim->mixed = stats_alloc(nprod, true);
     if (sim->mixed == NULL)
       p = false;
 
@@ -1084,8 +1098,8 @@ bool sim_run(struct sim* const sim) {
   if (sigs_register(sigs, sizeof sigs / sizeof *sigs) != SIZE_MAX)
     err_abort(sigs_register);
 
-  if (!sim_prepare_dirs(sim))
-    err_abort(sim_prepare_dirs);
+  if (!sim_init_fs(sim))
+    err_abort(sim_init_fs);
 
   if (!sim_save_const(sim))
     err_abort(sim_save_const);
@@ -1171,6 +1185,9 @@ bool sim_run(struct sim* const sim) {
 
   if (!print_wrong_results_fast(sim, stdout, NULL))
     err_abort(print_wrong_results_fast);
+
+  if (!sim_fini_fs(sim))
+    err_abort(sim_fini_fs);
 
 #ifdef _GNU_SOURCE
 #ifdef DEBUG

@@ -325,7 +325,10 @@ bool print_wrong_results_fast(struct sim const*, FILE*, void const*);
 // TODO Document these environment managers.
 
 __attribute__ ((__nonnull__))
-bool sim_prepare_dirs(struct sim const*);
+bool sim_init_fs(struct sim const*);
+
+__attribute__ ((__nonnull__))
+bool sim_fini_fs(struct sim const*);
 
 __attribute__ ((__nonnull__))
 bool sim_save_const(struct sim const*);

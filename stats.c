@@ -25,7 +25,7 @@ void stats_forget(struct stats* const stats) {
   stats->m2 = 0.0;
 }
 
-struct stats* stats_alloc(size_t const ncap) {
+struct stats* stats_alloc(size_t const ncap, bool const cache) {
   bool p = true;
 
   struct stats* const stats = malloc(sizeof *stats);
@@ -34,11 +34,14 @@ struct stats* stats_alloc(size_t const ncap) {
   else {
     stats->ncap = ncap;
 
-    stats->x = malloc(ncap * sizeof *stats->x);
-    if (stats->x == NULL)
-      p = false;
-    else
-      stats_forget(stats);
+    if (cache) {
+      stats->x = malloc(ncap * sizeof *stats->x);
+      if (stats->x == NULL)
+        p = false;
+      else
+        stats_forget(stats);
+    } else
+      stats->x = NULL;
   }
 
   if (p)
@@ -52,8 +55,11 @@ struct stats* stats_alloc(size_t const ncap) {
 
 bool stats_accum(struct stats* const stats, double const x) {
   if (stats->nmemb < stats->ncap) {
-    stats->x[stats->nmemb] = x;
+    if (stats->x != NULL)
+      stats->x[stats->nmemb] = x;
+
     ++stats->nmemb;
+
     double const dx = x - stats->m1;
     stats->m1 += dx / (double) stats->nmemb;
     stats->m2 += dx * (x - stats->m1);
@@ -61,6 +67,10 @@ bool stats_accum(struct stats* const stats, double const x) {
     return true;
   } else
     return false;
+}
+
+bool stats_cache(struct stats const* const stats) {
+  return stats->x != NULL;
 }
 
 size_t stats_n(struct stats const* const stats) {
@@ -110,7 +120,10 @@ double stats_sem(struct stats const* const stats) {
 }
 
 double stats_autocorr(struct stats const* const stats, size_t const k) {
-  double S = 0.0;
+  if (stats->x == NULL)
+    return NAN;
+
+  double s = 0.0;
 
   switch (stats->nmemb) {
     case 0:
@@ -118,15 +131,18 @@ double stats_autocorr(struct stats const* const stats, size_t const k) {
       return NAN;
     default:
       for (size_t i = k; i < stats->nmemb; ++i)
-        S += (stats->x[i - k] - stats->m1) * (stats->x[i] - stats->m1);
+        s += (stats->x[i - k] - stats->m1) * (stats->x[i] - stats->m1);
 
       return ((double) (stats->nmemb - 1) / (double) (stats->nmemb - k)) *
-        (S / stats->m2);
+        (s / stats->m2);
   }
 }
 
 double stats_corrtime(struct stats const* const stats) {
-  double S = 0.0;
+  if (stats->x == NULL)
+    return NAN;
+
+  double s = 0.0;
 
   switch (stats->nmemb) {
     case 0:
@@ -134,18 +150,21 @@ double stats_corrtime(struct stats const* const stats) {
       return NAN;
     default:
       for (size_t k = 1; k < stats->nmemb; ++k) {
-        double const A = stats_autocorr(stats, k);
-        if (A < 0.0)
+        double const a = stats_autocorr(stats, k);
+        if (a >= 0.0)
+          s += a;
+        else
           break;
-
-        S += A;
       }
 
-      return 1.0 + 2.0 * S;
+      return 1.0 + 2.0 * s;
   }
 }
 
 double stats_corrsem(struct stats const* const stats) {
+  if (stats->x == NULL)
+    return NAN;
+
   switch (stats->nmemb) {
     case 0:
       return NAN;
