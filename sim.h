@@ -296,6 +296,9 @@ __attribute__ ((__nonnull__ (1, 2)))
 bool print_nsubdiv(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
+bool print_ndiv(struct sim const*, FILE*, void const*);
+
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_energy_bead(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
@@ -345,7 +348,7 @@ void sim_free(struct sim*);
 
 __attribute__ ((__malloc__))
 struct sim* sim_alloc(size_t, size_t, size_t, size_t,
-    size_t, size_t, size_t, size_t, bool, double, double, double);
+    size_t, size_t, size_t, size_t, size_t, bool, double, double, double);
 
 // The call `sim_run(sim)` is magic.
 __attribute__ ((__nonnull__))

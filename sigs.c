@@ -4,15 +4,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define LOCK_OFF 0
-#define LOCK_ON 1
-
 #define SIGS_UNSET (SIGS_MIN - 2)
 #define SIGS_UNDER (SIGS_MIN - 1)
 #define SIGS_NULL 0
 #define SIGS_OVER (SIGS_MAX + 1)
 
-static volatile sig_atomic_t lock = LOCK_OFF;
 static volatile sig_atomic_t sig = SIGS_UNSET;
 
 static bool signum_under(int const signum) {
@@ -32,8 +28,6 @@ static bool signum_over(int const signum) {
 }
 
 void sigs_handler(int const signum) {
-  while (lock == LOCK_ON);
-
   sig = signum_normal(signum) ? (sig_atomic_t) signum :
     signum_null(signum) ? SIGS_NULL :
     signum_over(signum) ? SIGS_OVER :
@@ -106,13 +100,18 @@ void sigs_forget(void) {
 }
 
 bool sigs_use(int* const ptr) {
-  lock = LOCK_ON;
+  sigset_t set;
+  sigfillset(&set);
 
-  bool const p = sigs_normal(ptr);
-  if (p)
+  sigset_t oldset;
+  bool const p = sigprocmask(SIG_SETMASK, &set, &oldset) == -1;
+
+  bool const q = sigs_normal(ptr);
+  if (q)
     sigs_forget();
 
-  lock = LOCK_OFF;
+  if (!p)
+    (void) sigprocmask(SIG_SETMASK, &oldset, NULL);
 
-  return p;
+  return q;
 }

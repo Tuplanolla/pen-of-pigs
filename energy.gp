@@ -3,6 +3,7 @@ set output 'energy.tex'
 C = `cat 'run-latest/energy-corrtime.data'`
 set xlabel '$i_P$'
 set ylabel '$E$'
+set autoscale xfix
 plot 'run-latest/energy.data' using 1 : 2 \
   with lines linetype 1 title '$E_T$', \
   for [i = -1 : 1 : 1] '' using 1 : ($3 + i * sqrt(C) * $4) \

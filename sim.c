@@ -31,12 +31,13 @@
 
 // This structure contains the numbers of allocated objects by type.
 // The numbers never exceed the statically defined limits
-// `DIM_MAX`, `POLY_MAX`, `BEAD_MAX` and `SUBDIV_MAX`.
+// `DIM_MAX`, `POLY_MAX`, `BEAD_MAX`, `SUBDIV_MAX` and `DIV_MAX`.
 struct memb {
   size_t dim;
   size_t poly;
   size_t bead;
   size_t subdiv;
+  size_t div;
 };
 
 // This structure contains the numbers of total and recorded
@@ -81,7 +82,7 @@ struct sim {
   struct ens ens;
   struct stats* tde;
   struct stats* tdei[BEAD_MAX];
-  struct stats* mixed;
+  struct stats* mixed[BEAD_MAX];
   struct hist* p;
   struct hist* g;
   sim_decider accept;
@@ -741,12 +742,20 @@ bool print_nsubdiv(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
+bool print_ndiv(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
+  if (fprintf(fp, "%zu\n", sim->ens.nmemb.div) < 0)
+    return false;
+
+  return true;
+}
+
 bool print_energy_bead(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     if (fprintf(fp, "%g %g %g %g %g\n", (double) ibead * sim->ens.epsilon,
           stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
-          stats_mean(sim->mixed), stats_sem(sim->mixed)) < 0)
+          stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
       return false;
 
   return true;
@@ -762,7 +771,7 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
         ens_est_pigs_tde(&sim->ens, &ibead),
         stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
         ens_est_pigs_mixed(&sim->ens, &ibead),
-        stats_mean(sim->mixed), stats_sem(sim->mixed)) < 0)
+        stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
     return false;
 
   return true;
@@ -900,11 +909,14 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
         "E_L = %g +- %g (kappa = %g)\n"
         "E_M = %g +- %g (kappa = %g)\n",
         // ens_est_pimc_tde
-        stats_mean(sim->tde), 100.0 * stats_sem(sim->tde), 100.0,
+        stats_mean(sim->tde),
+        100.0 * stats_sem(sim->tde), 100.0,
         // ens_est_pigs_tde
-        stats_mean(sim->tdei[ibead]), 100.0 * stats_sem(sim->tdei[ibead]), 100.0,
+        stats_mean(sim->tdei[ibead]),
+        100.0 * stats_sem(sim->tdei[ibead]), 100.0,
         // ens_est_pigs_mixed
-        stats_mean(sim->mixed), 100.0 * stats_sem(sim->mixed), 100.0) < 0)
+        stats_mean(sim->mixed[ibead]),
+        100.0 * stats_sem(sim->mixed[ibead]), 100.0) < 0)
     return false;
 
   return true;
@@ -948,7 +960,8 @@ bool sim_save_const(struct sim const* const sim) {
     sim_res_print(sim, "ndim", print_ndim, NULL) &&
     sim_res_print(sim, "npoly", print_npoly, NULL) &&
     sim_res_print(sim, "nbead", print_nbead, NULL) &&
-    sim_res_print(sim, "nsubdiv", print_nsubdiv, NULL);
+    sim_res_print(sim, "nsubdiv", print_nsubdiv, NULL) &&
+    sim_res_print(sim, "ndiv", print_ndiv, NULL);
 }
 
 bool sim_save_mut(struct sim const* const sim) {
@@ -964,9 +977,10 @@ void sim_free(struct sim* const sim) {
     hist_free(sim->g);
     hist_free(sim->p);
 
-    stats_free(sim->mixed);
-    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+      stats_free(sim->mixed[ibead]);
       stats_free(sim->tdei[ibead]);
+    }
     stats_free(sim->tde);
 
     gsl_rng_free(sim->rng);
@@ -976,19 +990,23 @@ void sim_free(struct sim* const sim) {
 }
 
 struct sim* sim_alloc(size_t const ndim, size_t const npoly,
-    size_t const nbead, size_t const nsubdiv,
+    size_t const nbead, size_t const nsubdiv, size_t const ndiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
     bool const periodic, double const L, double const m, double const betau) {
-  // These assertions guarantee that adding or multiplying two steps or indices
-  // never wraps around, which makes their manipulation easier.
   dynamic_assert(ndim <= DIM_MAX, "too many dimensions");
   dynamic_assert(npoly <= POLY_MAX, "too many polymers");
   dynamic_assert(nbead <= BEAD_MAX, "too many beads");
+  dynamic_assert(nsubdiv <= SUBDIV_MAX, "too many subdivisions");
+  dynamic_assert(ndiv <= DIV_MAX, "too many divisions");
+
+  // These assertions guarantee that adding or multiplying two steps or indices
+  // never wraps around, which makes their manipulation easier.
   dynamic_assert(nthrm <= SQRT_SIZE_MAX, "too many thermalization steps");
   dynamic_assert(nprod <= SQRT_SIZE_MAX, "too many production steps");
   dynamic_assert(nthrmrec <= nthrm, "too many thermalization recording steps");
   dynamic_assert(nprodrec <= nprod, "too many production recording steps");
+
   dynamic_assert(L > 0.0, "empty simulation box");
   dynamic_assert(m > 0.0, "negative default mass");
   dynamic_assert(betau > 0.0, "weird things going on");
@@ -1026,6 +1044,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->ens.nmemb.poly = npoly;
     sim->ens.nmemb.bead = nbead;
     sim->ens.nmemb.subdiv = nsubdiv;
+    sim->ens.nmemb.div = ndiv;
 
     sim->ens.nstep.thrm = nthrm;
     sim->ens.nstep.prod = nprod;
@@ -1049,17 +1068,17 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
       sim->tdei[ibead] = stats_alloc(nprod, false);
       if (sim->tdei[ibead] == NULL)
         p = false;
-    }
 
-    sim->mixed = stats_alloc(nprod, false);
-    if (sim->mixed == NULL)
-      p = false;
+      sim->mixed[ibead] = stats_alloc(nprod, false);
+      if (sim->mixed[ibead] == NULL)
+        p = false;
+    }
 
     sim->p = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
     if (sim->p == NULL)
       p = false;
 
-    sim->g = hist_alloc(1, size_pow(nsubdiv, ndim), 0.0, L / 2.0);
+    sim->g = hist_alloc(1, ndiv, 0.0, L / 2.0);
     if (sim->g == NULL)
       p = false;
 
@@ -1083,25 +1102,6 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
 
     return NULL;
   }
-}
-
-__attribute__ ((__nonnull__))
-static void posdist_accum(struct sim const* const sim) {
-  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
-      (void) hist_accum(sim->p, sim->ens.R[ipoly].r[ibead].d);
-}
-
-__attribute__ ((__nonnull__))
-static void raddist_accum(struct sim const* const sim) {
-  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
-      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-        double const d = ens_dist(&sim->ens,
-            &sim->ens.R[ipoly].r[ibead], &sim->ens.R[jpoly].r[ibead]);
-
-        (void) hist_accum(sim->g, &d);
-      }
 }
 
 bool sim_run(struct sim* const sim) {
@@ -1136,9 +1136,6 @@ bool sim_run(struct sim* const sim) {
   sim_proposer const proposers[] = {sim_propose_ss, sim_propose_cmd};
   size_t const nproposer = sizeof proposers / sizeof *proposers;
 
-  // TODO For lazy testing.
-  // sim_perm_open(sim, NULL);
-
   for (size_t istep = 0;
       istep < sim->ens.nstep.thrm + sim->ens.nstep.prod;
       ++istep) {
@@ -1170,14 +1167,26 @@ bool sim_run(struct sim* const sim) {
 
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
         (void) stats_accum(sim->tdei[ibead],
-            ens_est_pigs_tde(&sim->ens, &ibead));
+            ens_est_pigs_tde(&sim->ens, &ibead) / sim->ens.nmemb.poly);
+        (void) stats_accum(sim->mixed[ibead],
+            ens_est_pigs_mixed(&sim->ens, &ibead) / sim->ens.nmemb.poly);
       }
 
-      size_t const ibead = sim->ens.nmemb.bead / 2;
-      (void) stats_accum(sim->mixed, ens_est_pigs_mixed(&sim->ens, &ibead));
+      for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
+        size_t const ibead = sim->ens.nmemb.bead / 2;
 
-      posdist_accum(sim);
-      raddist_accum(sim);
+        (void) hist_accum(sim->p, sim->ens.R[ipoly].r[ibead].d);
+      }
+
+      for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+        for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly) {
+          size_t const ibead = sim->ens.nmemb.bead / 2;
+
+          double const d = ens_dist(&sim->ens,
+              &sim->ens.R[ipoly].r[ibead], &sim->ens.R[jpoly].r[ibead]);
+
+          (void) hist_accum(sim->g, &d);
+        }
 
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {

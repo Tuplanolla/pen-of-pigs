@@ -17,9 +17,9 @@ static double potext_harm(struct ens const* const ens,
 
 __attribute__ ((__nonnull__))
 int main(int const argc, char** const argv) {
-  char const* const shortstr = "s:d:N:M:K:h:p:H:P:L:m:T:";
+  char const* const shortstr = "s:d:N:M:k:K:h:p:H:P:L:m:T:";
   char const* const longstr[] = {
-    "sys", "ndim", "npoly", "nbead", "nsubdiv",
+    "sys", "ndim", "npoly", "nbead", "nsubdiv", "ndiv",
     "nthrm", "nprod", "nthrmrec", "nprodrec",
     "mass", "length", "temp"
   };
@@ -32,6 +32,7 @@ int main(int const argc, char** const argv) {
   size_t npoly = 1;
   size_t nbead = 1;
   size_t nsubdiv = 1;
+  size_t ndiv = 1;
   size_t nthrm = 0;
   size_t nprod = 0;
   size_t nthrmrec = 0;
@@ -62,8 +63,12 @@ int main(int const argc, char** const argv) {
         if (opt_parse_size(&nbead, 1, BEAD_MAX))
           continue;
         break;
-      case 'K':
+      case 'k':
         if (opt_parse_size(&nsubdiv, 1, SUBDIV_MAX))
+          continue;
+        break;
+      case 'K':
+        if (opt_parse_size(&ndiv, 1, DIV_MAX))
           continue;
         break;
       case 'h':
@@ -106,7 +111,7 @@ int main(int const argc, char** const argv) {
       {
         double const beta = 1.0 / T;
 
-        struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
+        struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
             false, L, 1.0, beta);
         if (sim == NULL) {

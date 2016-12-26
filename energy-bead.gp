@@ -3,6 +3,7 @@ set output 'energy-bead.tex'
 C = `cat 'run-latest/energy-corrtime.data'`
 set xlabel '$\tau$'
 set ylabel '$E$'
+set autoscale xfix
 plot 'run-latest/energy-bead.data' using 1 : 2 \
   with lines linetype 1 title '$E_L$', \
   for [i = -1 : 1 : 2] '' using 1 : ($2 + i * sqrt(C) * $3) \
