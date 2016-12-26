@@ -10,8 +10,7 @@ unset key
 if (periodic) {
   set xrange [-L / 2.0 : L + L / 2.0]
   plot for [dx = -L : L : L] \
-    'run-latest/posdist.data' using \
-    ($1 + dx) : 2 \
+    'run-latest/posdist.data' using ($1 + dx) : 2 \
     with lines linetype 1
 } else {
   set xrange [-L / 2.0 : L / 2.0]

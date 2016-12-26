@@ -23,7 +23,7 @@ if (periodic) {
     ($2 + dx) : ($3 + dy) every ::0::0 \
     with points linetype 1 pointtype 7, \
     for [dx = -L : L : L] for [dy = -L : L : L] \
-    'run-latest/polys.data' using \
+    '' using \
     (fx($1, $2 + dx, $3 + dy)) : (fy($1, $2 + dx, $3 + dy)) : \
     (dfx($1, $2 + dx, $3 + dy)) : (dfy($1, $2 + dx, $3 + dy)) \
     with vectors linetype 1 filled
@@ -35,7 +35,7 @@ if (periodic) {
   unset object 1
   plot 'run-latest/polys.data' using 2 : 3 every ::0::0 \
     with points linetype 1 pointtype 7, \
-    'run-latest/polys.data' using \
+    '' using \
     (fx($1, $2, $3)) : (fy($1, $2, $3)) : \
     (dfx($1, $2, $3)) : (dfy($1, $2, $3)) \
     with vectors linetype 1 filled

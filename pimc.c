@@ -7,32 +7,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static double const epsilon = 2.0;
-static double const sigma = 0.2;
+static double const omega = 1.0;
 
 __attribute__ ((__nonnull__, __pure__))
-static double pot_lj612(struct ens const* const ens,
-    struct bead const* const r0, struct bead const* const r1) {
-  double const d = ens_dist2(ens, r0, r1);
-
-  if (d == 0.0)
-    return INFINITY;
-  else {
-    double const sigmad2 = gsl_pow_2(sigma) / d;
-
-    return 4.0 * epsilon * (gsl_pow_6(sigmad2) - gsl_pow_3(sigmad2));
-  }
+static double potext_harm(struct ens const* const ens,
+    struct bead const* const r) {
+  return gsl_pow_2(omega) * ens_norm2(ens, r) / 2.0;
 }
 
 __attribute__ ((__nonnull__))
 int main(int const argc, char** const argv) {
-  char const* const shortstr = "d:N:M:K:h:p:H:P:L:t:";
+  char const* const shortstr = "s:d:N:M:K:h:p:H:P:L:m:T:";
   char const* const longstr[] = {
-    "ndim", "npoly", "nbead", "nsubdiv",
+    "sys", "ndim", "npoly", "nbead", "nsubdiv",
     "nthrm", "nprod", "nthrmrec", "nprodrec",
-    "length", "imagtime"
+    "mass", "length", "temp"
+  };
+  char const* const sys[] = {
+    "qho"
   };
 
+  size_t isys = 0;
   size_t ndim = 1;
   size_t npoly = 1;
   size_t nbead = 1;
@@ -42,7 +37,8 @@ int main(int const argc, char** const argv) {
   size_t nthrmrec = 0;
   size_t nprodrec = 0;
   double L = 1.0;
-  double tau = 1.0;
+  double m = 1.0;
+  double T = 1.0;
 
   for ever {
     int const i = opt_parse(argc, argv, shortstr, longstr);
@@ -50,6 +46,10 @@ int main(int const argc, char** const argv) {
       break;
 
     switch ((char) i) {
+      case 's':
+        if (opt_parse_str(&isys, sys, sizeof sys / sizeof *sys))
+          continue;
+        break;
       case 'd':
         if (opt_parse_size(&ndim, 1, DIM_MAX))
           continue;
@@ -86,8 +86,12 @@ int main(int const argc, char** const argv) {
         if (opt_parse_fp(&L, 0.0, INFINITY))
           continue;
         break;
-      case 't':
-        if (opt_parse_fp(&tau, 0.0, INFINITY))
+      case 'm':
+        if (opt_parse_fp(&m, 0.0, INFINITY))
+          continue;
+        break;
+      case 'T':
+        if (opt_parse_fp(&T, 0.0, INFINITY))
           continue;
         break;
     }
@@ -97,26 +101,38 @@ int main(int const argc, char** const argv) {
     return EXIT_FAILURE;
   }
 
-  struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
-      nthrm, nprod, nthrmrec, nprodrec,
-      true, L, 1.0, tau);
-  if (sim == NULL) {
-    (void) fprintf(stderr, "Failed to allocate memory.\n");
+  switch (isys) {
+    case 0:
+      {
+        double const beta = 1.0 / T;
 
-    return EXIT_FAILURE;
+        struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv,
+            nthrm, nprod, nthrmrec, nprodrec,
+            false, L, 1.0, beta);
+        if (sim == NULL) {
+          (void) fprintf(stderr, "Failed to allocate memory.\n");
+
+          return EXIT_FAILURE;
+        }
+
+        double const q = omega / 2.0;
+        double const E = (double) ndim * q / tanh(q * beta);
+        (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
+
+        sim_perm_close(sim, NULL);
+        sim_set_potext(sim, potext_harm);
+
+        if (!sim_run(sim)) {
+          (void) fprintf(stderr, "Failed to run simulation.\n");
+
+          return EXIT_FAILURE;
+        }
+
+        sim_free(sim);
+
+        return EXIT_SUCCESS;
+      }
+    default:
+      return EXIT_FAILURE;
   }
-
-  sim_set_potint(sim, pot_lj612);
-  sim_perm_open(sim, NULL);
-  sim_place_random(sim, sim_placer_point, NULL);
-
-  if (!sim_run(sim)) {
-    (void) fprintf(stderr, "Failed to run simulation.\n");
-
-    return EXIT_FAILURE;
-  }
-
-  sim_free(sim);
-
-  return EXIT_SUCCESS;
 }

@@ -80,7 +80,7 @@ struct sim {
   gsl_rng* rng;
   struct ens ens;
   struct stats* tde;
-  struct stats* gtde;
+  struct stats* tdei[BEAD_MAX];
   struct stats* mixed;
   struct hist* p;
   struct hist* g;
@@ -97,7 +97,7 @@ struct sim {
       size_t ipoly;
       struct poly R;
     } cmd;
-  } past;
+  } cache;
   struct {
     struct {
       size_t acc;
@@ -174,42 +174,46 @@ void sim_set_potext(struct sim* const sim, ens_potext const V) {
 
 double ens_kin_polybead_bw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
-  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
+  double const m = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
 
   if (ibead == 0) {
     size_t const jpoly = ens->R[ipoly].ifrom;
-    size_t const jbead = ens->nmemb.bead - 1;
 
     if (jpoly == SIZE_MAX)
       return 0.0;
-    else
-      return M * ens_dist2(ens,
+    else {
+      size_t const jbead = ens->nmemb.bead - 1;
+
+      return m * ens_dist2(ens,
           &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[jbead]);
+    }
   } else {
     size_t const jbead = ibead - 1;
 
-    return M * ens_dist2(ens,
+    return m * ens_dist2(ens,
         &ens->R[ipoly].r[ibead], &ens->R[ipoly].r[jbead]);
   }
 }
 
 double ens_kin_polybead_fw(struct ens const* const ens,
     size_t const ipoly, size_t const ibead) {
-  double const M = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
+  double const m = ens->R[ipoly].m / (2.0 * gsl_pow_2(ens->epsilon));
 
   if (ibead == ens->nmemb.bead - 1) {
     size_t const jpoly = ens->R[ipoly].ito;
-    size_t const jbead = 0;
 
     if (jpoly == SIZE_MAX)
       return 0.0;
-    else
-      return M * ens_dist2(ens,
+    else {
+      size_t const jbead = 0;
+
+      return m * ens_dist2(ens,
           &ens->R[ipoly].r[ibead], &ens->R[jpoly].r[jbead]);
+    }
   } else {
     size_t const jbead = ibead + 1;
 
-    return M * ens_dist2(ens,
+    return m * ens_dist2(ens,
         &ens->R[ipoly].r[ibead], &ens->R[ipoly].r[jbead]);
   }
 }
@@ -470,11 +474,11 @@ void sim_move_accept_ss(struct sim* const sim) {
 }
 
 void sim_move_reject_ss(struct sim* const sim) {
-  size_t const ipoly = sim->past.ssm.ipoly;
-  size_t const ibead = sim->past.ssm.ibead;
+  size_t const ipoly = sim->cache.ssm.ipoly;
+  size_t const ibead = sim->cache.ssm.ibead;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
-    sim->ens.R[ipoly].r[ibead].d[idim] = sim->past.ssm.r.d[idim];
+    sim->ens.R[ipoly].r[ibead].d[idim] = sim->cache.ssm.r.d[idim];
 
   ++sim->params.ssm.rej;
 }
@@ -491,13 +495,13 @@ void sim_move_ss(struct sim* const sim,
   sim->reject = sim_move_reject_ss;
   sim->adjust = sim_move_adjust_ss;
 
-  sim->past.ssm.ipoly = ipoly;
-  sim->past.ssm.ibead = ibead;
+  sim->cache.ssm.ipoly = ipoly;
+  sim->cache.ssm.ibead = ibead;
 
   sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
 
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
-    sim->past.ssm.r.d[idim] = sim->ens.R[ipoly].r[ibead].d[idim];
+    sim->cache.ssm.r.d[idim] = sim->ens.R[ipoly].r[ibead].d[idim];
 
     sim->ens.R[ipoly].r[ibead].d[idim] =
       f(sim->ens.R[ipoly].r[ibead].d[idim] +
@@ -510,12 +514,12 @@ void sim_move_accept_cmd(struct sim* const sim) {
 }
 
 void sim_move_reject_cmd(struct sim* const sim) {
-  size_t const ipoly = sim->past.cmd.ipoly;
+  size_t const ipoly = sim->cache.cmd.ipoly;
 
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       sim->ens.R[ipoly].r[ibead].d[idim] =
-        sim->past.cmd.R.r[ibead].d[idim];
+        sim->cache.cmd.R.r[ibead].d[idim];
 
   ++sim->params.cmd.rej;
 }
@@ -531,7 +535,7 @@ void sim_move_cmd(struct sim* const sim, size_t const ipoly) {
   sim->reject = sim_move_reject_cmd;
   sim->adjust = sim_move_adjust_cmd;
 
-  sim->past.cmd.ipoly = ipoly;
+  sim->cache.cmd.ipoly = ipoly;
 
   sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
 
@@ -540,7 +544,7 @@ void sim_move_cmd(struct sim* const sim, size_t const ipoly) {
       ran_open(sim->rng, 1.0);
 
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-      sim->past.cmd.R.r[ibead].d[idim] =
+      sim->cache.cmd.R.r[ibead].d[idim] =
         sim->ens.R[ipoly].r[ibead].d[idim];
 
       sim->ens.R[ipoly].r[ibead].d[idim] =
@@ -737,6 +741,17 @@ bool print_nsubdiv(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
+bool print_energy_bead(struct sim const* const sim, FILE* const fp,
+    __attribute__ ((__unused__)) void const* const p) {
+  for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+    if (fprintf(fp, "%g %g %g %g %g\n", (double) ibead * sim->ens.epsilon,
+          stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
+          stats_mean(sim->mixed), stats_sem(sim->mixed)) < 0)
+      return false;
+
+  return true;
+}
+
 bool print_energy(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const ibead = sim->ens.nmemb.bead / 2;
@@ -745,7 +760,7 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
         ens_est_pimc_tde(&sim->ens, NULL),
         stats_mean(sim->tde), stats_sem(sim->tde),
         ens_est_pigs_tde(&sim->ens, &ibead),
-        stats_mean(sim->gtde), stats_sem(sim->gtde),
+        stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
         ens_est_pigs_mixed(&sim->ens, &ibead),
         stats_mean(sim->mixed), stats_sem(sim->mixed)) < 0)
     return false;
@@ -879,13 +894,15 @@ bool print_results(struct sim const* const sim, FILE* const fp,
 
 bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
+  size_t const ibead = sim->ens.nmemb.bead / 2;
+
   if (fprintf(fp, "E_T = %g +- %g (kappa = %g)\n"
         "E_L = %g +- %g (kappa = %g)\n"
         "E_M = %g +- %g (kappa = %g)\n",
         // ens_est_pimc_tde
         stats_mean(sim->tde), 100.0 * stats_sem(sim->tde), 100.0,
         // ens_est_pigs_tde
-        stats_mean(sim->gtde), 100.0 * stats_sem(sim->gtde), 100.0,
+        stats_mean(sim->tdei[ibead]), 100.0 * stats_sem(sim->tdei[ibead]), 100.0,
         // ens_est_pigs_mixed
         stats_mean(sim->mixed), 100.0 * stats_sem(sim->mixed), 100.0) < 0)
     return false;
@@ -935,7 +952,8 @@ bool sim_save_const(struct sim const* const sim) {
 }
 
 bool sim_save_mut(struct sim const* const sim) {
-  return sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
+  return sim_res_print(sim, "energy-bead", print_energy_bead, NULL) &&
+    sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
     sim_res_print(sim, "posdist", print_posdist, NULL) &&
     sim_res_print(sim, "raddist", print_raddist, NULL) &&
     sim_res_print(sim, "polys", print_polys, NULL);
@@ -947,7 +965,8 @@ void sim_free(struct sim* const sim) {
     hist_free(sim->p);
 
     stats_free(sim->mixed);
-    stats_free(sim->gtde);
+    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+      stats_free(sim->tdei[ibead]);
     stats_free(sim->tde);
 
     gsl_rng_free(sim->rng);
@@ -1026,11 +1045,13 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     if (sim->tde == NULL)
       p = false;
 
-    sim->gtde = stats_alloc(nprod, true);
-    if (sim->gtde == NULL)
-      p = false;
+    for (size_t ibead = 0; ibead < nbead; ++ibead) {
+      sim->tdei[ibead] = stats_alloc(nprod, false);
+      if (sim->tdei[ibead] == NULL)
+        p = false;
+    }
 
-    sim->mixed = stats_alloc(nprod, true);
+    sim->mixed = stats_alloc(nprod, false);
     if (sim->mixed == NULL)
       p = false;
 
@@ -1147,11 +1168,13 @@ bool sim_run(struct sim* const sim) {
     } else {
       (void) stats_accum(sim->tde, ens_est_pimc_tde(&sim->ens, NULL));
 
-      // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+        (void) stats_accum(sim->tdei[ibead],
+            ens_est_pigs_tde(&sim->ens, &ibead));
+      }
+
       size_t const ibead = sim->ens.nmemb.bead / 2;
-      (void) stats_accum(sim->gtde, ens_est_pigs_tde(&sim->ens, &ibead));
       (void) stats_accum(sim->mixed, ens_est_pigs_mixed(&sim->ens, &ibead));
-      // }
 
       posdist_accum(sim);
       raddist_accum(sim);

@@ -17,6 +17,14 @@
 __attribute__ ((__nonnull__ (2, 3)))
 int opt_parse(int, char* const*, char const*, char const* const*);
 
+// The call `opt_parse_str(ptr, str, n)` extracts a string
+// from the previously parsed command-line argument,
+// writes its index in the array `str` of length `n` into `ptr` and
+// returns `true` if possible.
+// Otherwise `false` is returned and no copying is done.
+__attribute__ ((__nonnull__))
+bool opt_parse_str(size_t*, char const* const*, size_t);
+
 // The call `opt_parse_size(ptr, min, max)` extracts a size number
 // from the previously parsed command-line argument,
 // writes it into `ptr` and returns `true`

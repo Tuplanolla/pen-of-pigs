@@ -296,6 +296,9 @@ __attribute__ ((__nonnull__ (1, 2)))
 bool print_nsubdiv(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
+bool print_energy_bead(struct sim const*, FILE*, void const*);
+
+__attribute__ ((__nonnull__ (1, 2)))
 bool print_energy(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))

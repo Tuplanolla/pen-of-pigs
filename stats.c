@@ -38,10 +38,10 @@ struct stats* stats_alloc(size_t const ncap, bool const cache) {
       stats->x = malloc(ncap * sizeof *stats->x);
       if (stats->x == NULL)
         p = false;
-      else
-        stats_forget(stats);
     } else
       stats->x = NULL;
+
+    stats_forget(stats);
   }
 
   if (p)

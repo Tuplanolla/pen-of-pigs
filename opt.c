@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #ifdef _GNU_SOURCE
@@ -53,6 +54,18 @@ int opt_parse(int const argc, char* const* const argv,
 }
 
 #endif
+
+bool opt_parse_str(size_t* const i,
+    char const* const* const str, size_t const n) {
+  for (size_t j = 0; j < n; ++j)
+    if (strcmp(optarg, str[j]) == 0) {
+      *i = j;
+
+      return true;
+    }
+
+  return false;
+}
 
 bool opt_parse_size(size_t* const n, size_t const min, size_t const max) {
   char* endptr;

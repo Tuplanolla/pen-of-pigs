@@ -8,7 +8,7 @@ flags=-D_GNU_SOURCE -DDEBUG -O0 -g \
 	-Wno-aggregate-return -Wno-covered-switch-default -Wno-unused-function
 endif
 ifeq ($(CONFIG), release)
-flags=-DNDEBUG -Ofast -Wl,-s -w
+flags=-DNDEBUG -O3 -Wl,-s -w
 endif
 endif
 
@@ -24,7 +24,7 @@ flags=-D_GNU_SOURCE -DDEBUG -Og -g \
 	-Wno-aggregate-return -Wno-switch-default -Wno-unused-function
 endif
 ifeq ($(CONFIG), release)
-flags=-D_GNU_SOURCE -DNDEBUG -Ofast -s -w
+flags=-D_GNU_SOURCE -DNDEBUG -O3 -s -w
 endif
 endif
 
@@ -34,20 +34,19 @@ LDLIBS=-lm `pkg-config --libs gsl`
 plot: plots.pdf
 
 run: build
-	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v \
-	./qho -d 1 -N 1 -M 32 -K 64 -h 8192 -p 131072 -H 16 -P 256 -T 0.1
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./pimc -s qho \
+	-d 1 -N 1 -M 32 -K 64 -h 8192 -p 131072 -H 16 -P 256 -L 2.0 -m 1.0 -T 0.1
 
 check: build
 	cppcheck -I/usr/include --enable=all *.c *.h
-	valgrind --leak-check=full --tool=memcheck \
-	./qho -d 2 -N 4 -M 8 -K 16 -h 128 -p 256 -H 32 -P 64 -T 0.1
+	valgrind --leak-check=full --tool=memcheck ./pimc -s qho \
+	-d 2 -N 4 -M 8 -K 16 -h 128 -p 256 -H 32 -P 64 -L 2.0 -m 1.0 -T 0.1
 
-build: he4 qho
+build: pigs pimc
 
 clean: shallow-clean
-	$(RM) he4 qho run-latest
-	# TODO Remove the 2.
-	$(RM) -r run-2*
+	$(RM) pigs pimc run-latest
+	$(RM) -r run-*
 	$(RM) *.eps *.tex plots.pdf
 
 shallow-clean:
@@ -63,10 +62,10 @@ plots.tex: energy.tex raddist.tex params.tex proj.tex \
 	polys-3.tex
 	./plotgen $(basename $^) > $@
 
-he4: he4.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
+pigs: pigs.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-qho: qho.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
+pimc: pimc.o err.o fp.o hist.o opt.o ran.o secs.o sigs.o sim.o size.o stats.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 %.tex: %.gp

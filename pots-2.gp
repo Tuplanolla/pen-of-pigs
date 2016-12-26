@@ -18,8 +18,7 @@ if (periodic) {
   set yrange [-L / 2.0 : L + L / 2.0]
   splot for [i = 0 : 1 : 1] \
     for [dx = -L : L : L] for [dy = -L : L : L] \
-    'run-latest/pots.data' using \
-    ($1 + dx) : ($2 + dy) : i + 3 \
+    'run-latest/pots.data' using ($1 + dx) : ($2 + dy) : i + 3 \
     with lines linetype 2 * i + 1
 } else {
   set xrange [-L / 2.0 : L / 2.0]
