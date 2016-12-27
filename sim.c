@@ -828,11 +828,11 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r1;
     hist_cunbin(sim->g, &r1, ibin);
 
-    double r;
-    hist_unbin(sim->g, &r, ibin);
-
     double const v = fp_ballvol(r1, sim->ens.nmemb.dim) -
       fp_ballvol(r0, sim->ens.nmemb.dim);
+
+    double r;
+    hist_unbin(sim->g, &r, ibin);
 
     if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->g, ibin) * v) < 0)
       return false;

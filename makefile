@@ -29,7 +29,7 @@ endif
 endif
 
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
-LDLIBS=-lm `pkg-config --libs gsl`
+LDLIBS=-lm -lrt `pkg-config --libs gsl`
 
 plot: plots.pdf
 
@@ -58,7 +58,7 @@ shallow-clean:
 plots.pdf: plots.tex
 	pdflatex $<
 
-plots.tex: energy.tex raddist.tex params.tex proj.tex \
+plots.tex: energy.tex energy-bead.tex raddist.tex params.tex proj.tex \
 	posdist-1.tex pots-1.tex \
 	polys-2.tex posdist-2.tex pots-2.tex \
 	polys-3.tex
