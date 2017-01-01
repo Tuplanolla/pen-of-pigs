@@ -60,6 +60,10 @@ double ens_dist(struct ens const*, struct bead const*, struct bead const*);
 
 // TODO Document these kinetic energy calculators.
 
+// Kinetic energy for the degrees of freedom by the equipartition theorem.
+__attribute__ ((__nonnull__, __pure__))
+double ens_kindf(struct ens const*);
+
 // Kinetic energy within a polymer from one bead to the previous one.
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_polybead_bw(struct ens const*, size_t, size_t);
@@ -70,6 +74,14 @@ double ens_kin_polybead_bw(struct ens const*, size_t, size_t);
 // $M = m / 2 \hbar \tau^2$
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_polybead_fw(struct ens const*, size_t, size_t);
+
+// Kinetic energy within a polymer from each bead to the previous one.
+__attribute__ ((__nonnull__, __pure__))
+double ens_kin_bead_bw(struct ens const*, size_t);
+
+// Kinetic energy within a polymer from each bead to the next one.
+__attribute__ ((__nonnull__, __pure__))
+double ens_kin_bead_fw(struct ens const*, size_t);
 
 // Kinetic energy within a polymer from one bead to its two neighbors.
 __attribute__ ((__nonnull__, __pure__))
@@ -88,10 +100,6 @@ double ens_kin_total(struct ens const*);
 // Potential energy between certain beads of all polymers.
 __attribute__ ((__nonnull__, __pure__))
 double ens_potint_bead(struct ens const*, size_t);
-
-// Additional potential energy between either of the ends of all polymers.
-__attribute__ ((__nonnull__, __pure__))
-double ens_potend_bead(struct ens const*, size_t);
 
 // External potential energy for one bead in a polymer.
 __attribute__ ((__nonnull__, __pure__))
@@ -119,11 +127,11 @@ typedef double (* ens_est)(struct ens const*, void const*);
 // - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau}
 // + \tau V(R_k)\Bigr\rangle$
 __attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pimc_tde(struct ens const*, void const*);
+double ens_est_pimc_td(struct ens const*, void const*);
 
 // TODO Thermodynamic energy estimator for open polymers.
 __attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pigs_tde(struct ens const*, void const*);
+double ens_est_pigs_virial(struct ens const*, void const*);
 
 // TODO Crap energy estimator for open polymers.
 __attribute__ ((__nonnull__ (1), __pure__))
@@ -133,11 +141,6 @@ double ens_est_pigs_mixed(struct ens const*, void const*);
 // as the internal (polymer-to-polymer) potential of the simulation `sim`.
 __attribute__ ((__nonnull__))
 void sim_set_potint(struct sim*, ens_pot);
-
-// The call `sim_set_potend(sim, f)` sets `f`
-// as the additional (end-to-end) potential of the simulation `sim`.
-__attribute__ ((__nonnull__))
-void sim_set_potend(struct sim*, ens_pot);
 
 // The call `sim_set_potext(sim, f)` sets `f`
 // as the external (bead-to-origin) potential of the simulation `sim`.

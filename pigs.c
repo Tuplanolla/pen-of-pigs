@@ -54,8 +54,8 @@ int main(int const argc, char** const argv) {
   size_t nprod = 0;
   size_t nthrmrec = 0;
   size_t nprodrec = 0;
-  double L = 1.0;
-  double m = 1.0;
+  double length = 1.0;
+  double mass = 1.0;
   double tau = 1.0;
 
   for ever {
@@ -105,11 +105,11 @@ int main(int const argc, char** const argv) {
           continue;
         break;
       case 'L':
-        if (opt_parse_fp(&L, 0.0, INFINITY))
+        if (opt_parse_fp(&length, 0.0, INFINITY))
           continue;
         break;
       case 'm':
-        if (opt_parse_fp(&m, 0.0, INFINITY))
+        if (opt_parse_fp(&mass, 0.0, INFINITY))
           continue;
         break;
       case 't':
@@ -127,12 +127,12 @@ int main(int const argc, char** const argv) {
     case 0:
       {
         double const q = omega / 2.0;
-        double const E = (double) ndim * q;
-        (void) printf("Expected for QHO: E = %f\n", E);
+        double const e = (double) ndim * q;
+        (void) printf("Expected for QHO: E = %f\n", e);
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            false, L, m, tau);
+            false, length, mass, tau);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
@@ -156,16 +156,16 @@ int main(int const argc, char** const argv) {
       {
         // Equilibrium conditions:
         // d = 3
-        // N = 64
-        // M = 16
+        // N = 64 [16]
+        // M = 15
         // epsilon = 0.0125 K^-1 (tau = 0.2 K^-1)
-        // rho = 0.02186 A^-3 (L = 14.306 A)
-        double const EN = -7.32;
-        (void) printf("Expected for He4: E = %f (E / N = %f)\n", EN * npoly, EN);
+        // rho = 0.02186 A^-3 (L = 14.306 A [9.0 A])
+        double const en = -7.32;
+        (void) printf("Expected for He-4: E = %f (E / N = %f)\n", en * npoly, en);
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            true, L, 1.0, tau);
+            true, length, 1.0, tau);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
@@ -174,7 +174,7 @@ int main(int const argc, char** const argv) {
 
         sim_perm_open(sim, NULL);
         sim_set_potint(sim, pot_lj612);
-        sim_place_random(sim, sim_placer_point, NULL);
+        sim_place_lattice(sim, sim_placer_random, NULL);
 
         if (!sim_run(sim)) {
           (void) fprintf(stderr, "Failed to run simulation.\n");

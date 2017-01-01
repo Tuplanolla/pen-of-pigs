@@ -37,9 +37,9 @@ int main(int const argc, char** const argv) {
   size_t nprod = 0;
   size_t nthrmrec = 0;
   size_t nprodrec = 0;
-  double L = 1.0;
-  double m = 1.0;
-  double T = 1.0;
+  double length = 1.0;
+  double mass = 1.0;
+  double temp = 1.0;
 
   for ever {
     int const i = opt_parse(argc, argv, shortstr, longstr);
@@ -88,15 +88,15 @@ int main(int const argc, char** const argv) {
           continue;
         break;
       case 'L':
-        if (opt_parse_fp(&L, 0.0, INFINITY))
+        if (opt_parse_fp(&length, 0.0, INFINITY))
           continue;
         break;
       case 'm':
-        if (opt_parse_fp(&m, 0.0, INFINITY))
+        if (opt_parse_fp(&mass, 0.0, INFINITY))
           continue;
         break;
       case 'T':
-        if (opt_parse_fp(&T, 0.0, INFINITY))
+        if (opt_parse_fp(&temp, 0.0, INFINITY))
           continue;
         break;
     }
@@ -109,11 +109,11 @@ int main(int const argc, char** const argv) {
   switch (isys) {
     case 0:
       {
-        double const beta = 1.0 / T;
+        double const beta = 1.0 / temp;
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            false, L, 1.0, beta);
+            false, length, 1.0, beta);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
@@ -121,8 +121,8 @@ int main(int const argc, char** const argv) {
         }
 
         double const q = omega / 2.0;
-        double const E = (double) ndim * q / tanh(q * beta);
-        (void) printf("Expected for QHO: E = %f (T = %f)\n", E, T);
+        double const e = (double) ndim * q / tanh(q * beta);
+        (void) printf("Expected for QHO: E = %f (T = %f)\n", e, temp);
 
         sim_perm_close(sim, NULL);
         sim_set_potext(sim, potext_harm);
