@@ -47,7 +47,7 @@ check: build
 	-L 8.0 -m 1.0 -T 0.125
 
 clean: shallow-clean
-	$(RM) pigs pimc run-latest
+	$(RM) pigs pimc run-current run-latest
 	$(RM) -r run-*
 	$(RM) *.eps *.tex plots.pdf
 

@@ -297,6 +297,7 @@ double ens_pot_total(struct ens const* const ens) {
   return v;
 }
 
+// TODO This is currently not used, because it works reliably.
 double sim_est_pimc_thermal(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
   double const e = ens_kindf(&sim->ens);
@@ -306,8 +307,10 @@ double sim_est_pimc_thermal(struct sim const* const sim,
   return e - k + v;
 }
 
-double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
-  size_t const ibead = *(size_t const*) p;
+// TODO This is just `sim_est_pigs_virial` at the central link.
+double sim_est_pigs_central(struct sim const* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
+  size_t const ibead = sim->ens.nmemb.bead / 2;
 
   double const e = ens_kindf(&sim->ens);
 
@@ -337,6 +340,19 @@ double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
 
     v += ens_potext_polybead(&sim->ens, ipoly, ibead);
   }
+
+  return e - k + v;
+}
+
+double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
+  size_t const ibead = *(size_t const*) p;
+
+  double const e = ens_kindf(&sim->ens);
+  double k = 0.0;
+  double const v = ens_pot_bead(&sim->ens, ibead);
+
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+    k += ens_kin_polybead(&sim->ens, ipoly, ibead) / 2.0;
 
   return e - k + v;
 }
@@ -775,7 +791,7 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
   if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n", sim->ens.istep.prod,
-        sim_est_pimc_thermal(sim, NULL),
+        sim_est_pigs_central(sim, NULL),
         stats_mean(sim->tde), stats_sem(sim->tde),
         sim_est_pigs_virial(sim, &ibead),
         stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
@@ -917,7 +933,7 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
   if (fprintf(fp, "E_T = %g +- %g (kappa = %g)\n"
         "E_V = %g +- %g (kappa = %g)\n"
         "E_M = %g +- %g (kappa = %g)\n",
-        // sim_est_pimc_thermal
+        // sim_est_pigs_central
         stats_mean(sim->tde),
         100.0 * stats_sem(sim->tde), stats_corrtime_lag(sim->tde, 256),
         // sim_est_pigs_virial
@@ -1174,7 +1190,7 @@ bool sim_run(struct sim* const sim) {
 
       ++sim->ens.istep.thrm;
     } else {
-      (void) stats_accum(sim->tde, sim_est_pimc_thermal(sim, NULL));
+      (void) stats_accum(sim->tde, sim_est_pigs_central(sim, NULL));
 
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
         (void) stats_accum(sim->tdei[ibead],
