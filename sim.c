@@ -79,8 +79,8 @@ struct ens {
 struct sim {
   gsl_rng* rng;
   struct ens ens;
-  struct stats* tde;
-  struct stats* tdei[BEAD_MAX];
+  struct stats* central;
+  struct stats* virial[BEAD_MAX];
   struct stats* mixed[BEAD_MAX];
   struct hist* p;
   struct hist* g;
@@ -366,7 +366,7 @@ double sim_est_pigs_mixed(struct sim const* const sim, void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
     v += sim->ens.potext(&sim->ens, &sim->ens.r[ipoly].r[ibead]);
 
-  return v;
+  return 2.0 * v;
 }
 
 void sim_weight_const(struct sim* const sim, void const* const p) {
@@ -779,7 +779,7 @@ bool print_energy_bead(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
     if (fprintf(fp, "%g %g %g %g %g\n", (double) ibead * sim->ens.epsilon,
-          stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
+          stats_mean(sim->virial[ibead]), stats_sem(sim->virial[ibead]),
           stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
       return false;
 
@@ -792,9 +792,9 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
 
   if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n", sim->ens.istep.prod,
         sim_est_pigs_central(sim, NULL),
-        stats_mean(sim->tde), stats_sem(sim->tde),
+        stats_mean(sim->central), stats_sem(sim->central),
         sim_est_pigs_virial(sim, &ibead),
-        stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
+        stats_mean(sim->virial[ibead]), stats_sem(sim->virial[ibead]),
         sim_est_pigs_mixed(sim, &ibead),
         stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
     return false;
@@ -804,7 +804,12 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
 
 bool print_energy_corrtime(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  if (fprintf(fp, "%g\n", stats_corrtime(sim->tde)) < 0)
+  size_t const ibead = sim->ens.nmemb.bead / 2;
+
+  if (fprintf(fp, "%g %g %g\n",
+        stats_corrtime(sim->central),
+        stats_corrtime(sim->virial[ibead]),
+        stats_corrtime(sim->mixed[ibead])) < 0)
     return false;
 
   return true;
@@ -919,8 +924,8 @@ bool print_progress(struct sim const* const sim, FILE* const fp,
 bool print_results(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
-        stats_mean(sim->tde), stats_corrsem(sim->tde),
-        stats_corrtime(sim->tde)) < 0)
+        stats_mean(sim->central), stats_corrsem(sim->central),
+        stats_corrtime(sim->central)) < 0)
     return false;
 
   return true;
@@ -934,11 +939,11 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
         "E_V = %g +- %g (kappa = %g)\n"
         "E_M = %g +- %g (kappa = %g)\n",
         // sim_est_pigs_central
-        stats_mean(sim->tde),
-        100.0 * stats_sem(sim->tde), stats_corrtime_lag(sim->tde, 256),
+        stats_mean(sim->central),
+        100.0 * stats_sem(sim->central), 100.0,
         // sim_est_pigs_virial
-        stats_mean(sim->tdei[ibead]),
-        100.0 * stats_sem(sim->tdei[ibead]), 100.0,
+        stats_mean(sim->virial[ibead]),
+        100.0 * stats_sem(sim->virial[ibead]), 100.0,
         // sim_est_pigs_mixed
         stats_mean(sim->mixed[ibead]),
         100.0 * stats_sem(sim->mixed[ibead]), 100.0) < 0)
@@ -1004,9 +1009,9 @@ void sim_free(struct sim* const sim) {
 
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
       stats_free(sim->mixed[ibead]);
-      stats_free(sim->tdei[ibead]);
+      stats_free(sim->virial[ibead]);
     }
-    stats_free(sim->tde);
+    stats_free(sim->central);
 
     gsl_rng_free(sim->rng);
   }
@@ -1085,16 +1090,16 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->reject = sim_move_null;
     sim->adjust = sim_move_null;
 
-    sim->tde = stats_alloc(nprod, true);
-    if (sim->tde == NULL)
+    sim->central = stats_alloc(nprod, true);
+    if (sim->central == NULL)
       p = false;
 
     for (size_t ibead = 0; ibead < nbead; ++ibead) {
-      sim->tdei[ibead] = stats_alloc(nprod, false);
-      if (sim->tdei[ibead] == NULL)
+      sim->virial[ibead] = stats_alloc(nprod, true);
+      if (sim->virial[ibead] == NULL)
         p = false;
 
-      sim->mixed[ibead] = stats_alloc(nprod, false);
+      sim->mixed[ibead] = stats_alloc(nprod, true);
       if (sim->mixed[ibead] == NULL)
         p = false;
     }
@@ -1190,10 +1195,10 @@ bool sim_run(struct sim* const sim) {
 
       ++sim->ens.istep.thrm;
     } else {
-      (void) stats_accum(sim->tde, sim_est_pigs_central(sim, NULL));
+      (void) stats_accum(sim->central, sim_est_pigs_central(sim, NULL));
 
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-        (void) stats_accum(sim->tdei[ibead],
+        (void) stats_accum(sim->virial[ibead],
             sim_est_pigs_virial(sim, &ibead) / sim->ens.nmemb.poly);
         (void) stats_accum(sim->mixed[ibead],
             sim_est_pigs_mixed(sim, &ibead) / sim->ens.nmemb.poly);
