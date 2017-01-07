@@ -297,37 +297,58 @@ double ens_pot_total(struct ens const* const ens) {
   return v;
 }
 
-double ens_est_pimc_td(struct ens const* const ens,
+double sim_est_pimc_thermal(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
-  double const e = ens_kindf(ens);
-  double const k = ens_kin_total(ens) / (double) ens->nmemb.bead;
-  double const v = ens_pot_total(ens) / (double) ens->nmemb.bead;
+  double const e = ens_kindf(&sim->ens);
+  double const k = ens_kin_total(&sim->ens) / (double) sim->ens.nmemb.bead;
+  double const v = ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
 
   return e - k + v;
 }
 
-// TODO This is probably slightly wrong.
-double ens_est_pigs_virial(struct ens const* const ens, void const* const p) {
+double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
   size_t const ibead = *(size_t const*) p;
 
-  double const e = ens_kindf(ens);
-  double k = 0.0;
-  double const v = ens_pot_bead(ens, ibead);
+  double const e = ens_kindf(&sim->ens);
 
-  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
-    k += ens_kin_polybead(ens, ipoly, ibead) / 2.0;
+  double k = 0.0;
+  double v = 0.0;
+
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
+    k += ens_kin_polybead_bw(&sim->ens, ipoly, ibead);
+
+    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly) {
+      struct bead r0;
+      for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
+        r0.r[idim] = (sim->ens.r[ipoly].r[ibead].r[idim] +
+            sim->ens.r[ipoly].r[ibead - 1].r[idim]) / 2 +
+          gsl_ran_gaussian(sim->rng,
+              sqrt(sim->ens.epsilon / sim->ens.r[ipoly].mass));
+
+      struct bead r1;
+      for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
+        r1.r[idim] = (sim->ens.r[jpoly].r[ibead].r[idim] +
+           sim->ens.r[jpoly].r[ibead - 1].r[idim]) / 2 +
+          gsl_ran_gaussian(sim->rng,
+              sqrt(sim->ens.epsilon / sim->ens.r[jpoly].mass));
+
+      v += sim->ens.potint(&sim->ens, &r0, &r1);
+    }
+
+    v += ens_potext_polybead(&sim->ens, ipoly, ibead);
+  }
 
   return e - k + v;
 }
 
 // TODO This does not work with zero external potential.
-double ens_est_pigs_mixed(struct ens const* const ens, void const* const p) {
+double sim_est_pigs_mixed(struct sim const* const sim, void const* const p) {
   size_t const ibead = *(size_t const*) p;
 
   double v = 0.0;
 
-  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
-    v += ens->potext(ens, &ens->r[ipoly].r[ibead]);
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+    v += sim->ens.potext(&sim->ens, &sim->ens.r[ipoly].r[ibead]);
 
   return v;
 }
@@ -754,11 +775,11 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
   if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n", sim->ens.istep.prod,
-        ens_est_pimc_td(&sim->ens, NULL),
+        sim_est_pimc_thermal(sim, NULL),
         stats_mean(sim->tde), stats_sem(sim->tde),
-        ens_est_pigs_virial(&sim->ens, &ibead),
+        sim_est_pigs_virial(sim, &ibead),
         stats_mean(sim->tdei[ibead]), stats_sem(sim->tdei[ibead]),
-        ens_est_pigs_mixed(&sim->ens, &ibead),
+        sim_est_pigs_mixed(sim, &ibead),
         stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
     return false;
 
@@ -894,15 +915,15 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
   if (fprintf(fp, "E_T = %g +- %g (kappa = %g)\n"
-        "E_L = %g +- %g (kappa = %g)\n"
+        "E_V = %g +- %g (kappa = %g)\n"
         "E_M = %g +- %g (kappa = %g)\n",
-        // ens_est_pimc_td
+        // sim_est_pimc_thermal
         stats_mean(sim->tde),
-        100.0 * stats_sem(sim->tde), 100.0,
-        // ens_est_pigs_virial
+        100.0 * stats_sem(sim->tde), stats_corrtime_lag(sim->tde, 256),
+        // sim_est_pigs_virial
         stats_mean(sim->tdei[ibead]),
         100.0 * stats_sem(sim->tdei[ibead]), 100.0,
-        // ens_est_pigs_mixed
+        // sim_est_pigs_mixed
         stats_mean(sim->mixed[ibead]),
         100.0 * stats_sem(sim->mixed[ibead]), 100.0) < 0)
     return false;
@@ -1153,13 +1174,13 @@ bool sim_run(struct sim* const sim) {
 
       ++sim->ens.istep.thrm;
     } else {
-      (void) stats_accum(sim->tde, ens_est_pimc_td(&sim->ens, NULL));
+      (void) stats_accum(sim->tde, sim_est_pimc_thermal(sim, NULL));
 
       for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
         (void) stats_accum(sim->tdei[ibead],
-            ens_est_pigs_virial(&sim->ens, &ibead) / sim->ens.nmemb.poly);
+            sim_est_pigs_virial(sim, &ibead) / sim->ens.nmemb.poly);
         (void) stats_accum(sim->mixed[ibead],
-            ens_est_pigs_mixed(&sim->ens, &ibead) / sim->ens.nmemb.poly);
+            sim_est_pigs_mixed(sim, &ibead) / sim->ens.nmemb.poly);
       }
 
       for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {

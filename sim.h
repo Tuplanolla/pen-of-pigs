@@ -119,23 +119,23 @@ double ens_pot_total(struct ens const*);
 
 // TODO Document these estimators.
 
-typedef double (* ens_est)(struct ens const*, void const*);
+typedef double (* sim_est)(struct sim const*, void const*);
 
 // Thermodynamic energy estimator for closed polymers.
 // $\langle E_T\rangle = \frac 1{M \tau} \sum_{k = 1}^M
 // \Bigl\langle\frac{d N} 2
 // - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau}
 // + \tau V(R_k)\Bigr\rangle$
-__attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pimc_td(struct ens const*, void const*);
+__attribute__ ((__nonnull__ (1)))
+double sim_est_pimc_thermal(struct sim const*, void const*);
 
 // TODO Thermodynamic energy estimator for open polymers.
-__attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pigs_virial(struct ens const*, void const*);
+__attribute__ ((__nonnull__ (1)))
+double sim_est_pigs_virial(struct sim const*, void const*);
 
 // TODO Crap energy estimator for open polymers.
-__attribute__ ((__nonnull__ (1), __pure__))
-double ens_est_pigs_mixed(struct ens const*, void const*);
+__attribute__ ((__nonnull__ (1)))
+double sim_est_pigs_mixed(struct sim const*, void const*);
 
 // The call `sim_set_potint(sim, f)` sets `f`
 // as the internal (polymer-to-polymer) potential of the simulation `sim`.

@@ -1,7 +1,9 @@
+#include "size.h"
 #include "stats.h"
 #include <gsl/gsl_statistics_double.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 struct stats {
@@ -138,7 +140,7 @@ double stats_autocorr(struct stats const* const stats, size_t const k) {
   }
 }
 
-double stats_corrtime(struct stats const* const stats) {
+double stats_corrtime_lag(struct stats const* const stats, size_t n) {
   if (stats->x == NULL)
     return NAN;
 
@@ -149,7 +151,9 @@ double stats_corrtime(struct stats const* const stats) {
     case 1:
       return NAN;
     default:
-      for (size_t k = 1; k < stats->nmemb; ++k) {
+      n = size_min(n, stats->nmemb);
+
+      for (size_t k = 1; k < n; ++k) {
         double const a = stats_autocorr(stats, k);
         if (a >= 0.0)
           s += a;
@@ -159,6 +163,10 @@ double stats_corrtime(struct stats const* const stats) {
 
       return 1.0 + 2.0 * s;
   }
+}
+
+double stats_corrtime(struct stats const* const stats) {
+  return stats_corrtime_lag(stats, SIZE_MAX);
 }
 
 double stats_corrsem(struct stats const* const stats) {

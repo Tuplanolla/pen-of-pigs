@@ -31,6 +31,8 @@ endif
 CFLAGS=-D_POSIX_C_SOURCE=200809L -std=c11 `pkg-config --cflags gsl` $(flags)
 LDLIBS=-lm -lrt `pkg-config --libs gsl`
 
+build: pigs pimc
+
 plot: plots.pdf
 
 run: build
@@ -43,8 +45,6 @@ check: build
 	valgrind --leak-check=full --tool=memcheck ./pimc \
 	-s qho -d 2 -N 8 -M 16 -k 4 -K 32 -h 256 -p 512 -H 64 -P 128 \
 	-L 8.0 -m 1.0 -T 0.125
-
-build: pigs pimc
 
 clean: shallow-clean
 	$(RM) pigs pimc run-latest

@@ -9,7 +9,7 @@ plot 'run-latest/energy.data' using 1 : 2 \
   for [i = -1 : 1 : 1] '' using 1 : ($3 + i * sqrt(C) * $4) \
   with lines linetype 1 notitle, \
   # '' using 1 : 5 \
-  with lines linetype 2 title '$E_L$', \
+  with lines linetype 2 title '$E_V$', \
   for [i = -1 : 1 : 1] '' using 1 : ($6 + i * sqrt(C) * $7) \
   with lines linetype 2 notitle, \
   '' using 1 : 8 \

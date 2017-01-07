@@ -74,6 +74,13 @@ double stats_sem(struct stats const*);
 __attribute__ ((__nonnull__, __pure__))
 double stats_autocorr(struct stats const*, size_t);
 
+// The call `stats_corrtime_lag(stats, k)` returns
+// the estimated lag-$k$ correlation time of the statistics `stats`
+// if `stats` caches its samples.
+// Otherwise `NAN` is returned.
+// The time complexity is $O(n k)$ for $n$ samples and $k$ lag.
+double stats_corrtime_lag(struct stats const*, size_t);
+
 // The call `stats_corrtime(stats)` returns
 // the estimated correlation time of the statistics `stats`
 // if `stats` caches its samples.
