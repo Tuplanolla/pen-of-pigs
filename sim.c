@@ -82,12 +82,12 @@ struct sim {
   struct stats* central;
   struct stats* virial[BEAD_MAX];
   struct stats* mixed[BEAD_MAX];
-  struct hist* p;
-  struct hist* g;
+  struct hist* posdist;
+  struct hist* raddist;
   sim_decider accept;
   sim_decider reject;
   sim_decider adjust;
-  struct {
+  union {
     struct {
       size_t ipoly;
       size_t ibead;
@@ -98,7 +98,7 @@ struct sim {
       struct poly r;
     } cmd;
   } cache;
-  struct {
+  union {
     struct {
       size_t acc;
       size_t rej;
@@ -830,17 +830,17 @@ bool print_params(struct sim const* const sim, FILE* const fp,
 
 bool print_posdist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const nbin = hist_nbin(sim->p);
+  size_t const nbin = hist_nbin(sim->posdist);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     struct bead r;
-    hist_unbin(sim->p, r.r, ibin);
+    hist_unbin(sim->posdist, r.r, ibin);
 
     for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
       if (fprintf(fp, "%g ", r.r[idim]) < 0)
         return false;
 
-    if (fprintf(fp, "%g\n", hist_normhits(sim->p, ibin)) < 0)
+    if (fprintf(fp, "%g\n", hist_normhits(sim->posdist, ibin)) < 0)
       return false;
   }
 
@@ -849,22 +849,22 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
 
 bool print_raddist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const nbin = hist_nbin(sim->g);
+  size_t const nbin = hist_nbin(sim->raddist);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     double r0;
-    hist_funbin(sim->g, &r0, ibin);
+    hist_funbin(sim->raddist, &r0, ibin);
 
     double r1;
-    hist_cunbin(sim->g, &r1, ibin);
+    hist_cunbin(sim->raddist, &r1, ibin);
 
     double const v = fp_ballvol(r1, sim->ens.nmemb.dim) -
       fp_ballvol(r0, sim->ens.nmemb.dim);
 
     double r;
-    hist_unbin(sim->g, &r, ibin);
+    hist_unbin(sim->raddist, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->g, ibin) * v) < 0)
+    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->raddist, ibin) * v) < 0)
       return false;
   }
 
@@ -908,14 +908,14 @@ bool print_polys(struct sim const* const sim, FILE* const fp,
 
 bool print_progress(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const i = sim->ens.istep.thrm + sim->ens.istep.prod;
-  size_t const n = sim->ens.nstep.thrm + sim->ens.nstep.prod;
-
   if (fprintf(fp,
-        "(i_T + i_P) / (n_T + n_P) = (%zu + %zu) / (%zu + %zu) = %zu %%\n",
-        sim->ens.istep.thrm, sim->ens.istep.prod,
-        sim->ens.nstep.thrm, sim->ens.nstep.prod,
-        n == 0 ? 100 : 100 * i / n) < 0)
+        "i_T / n_T + i_P / n_P = %zu / %zu + %zu / %zu = %zu %% + %zu %%\n",
+        sim->ens.istep.thrm, sim->ens.nstep.thrm,
+        sim->ens.istep.prod, sim->ens.nstep.prod,
+        sim->ens.nstep.thrm == 0 ? 100 :
+        100 * sim->ens.istep.thrm / sim->ens.nstep.thrm,
+        sim->ens.nstep.prod == 0 ? 100 :
+        100 * sim->ens.istep.prod / sim->ens.nstep.prod) < 0)
     return false;
 
   return true;
@@ -935,18 +935,15 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
-  if (fprintf(fp, "E_T = %g +- %g (kappa = %g)\n"
-        "E_V = %g +- %g (kappa = %g)\n"
-        "E_M = %g +- %g (kappa = %g)\n",
+  if (fprintf(fp, "E_C = %g +- %g\n"
+        "E_V = %g +- %g\n"
+        "E_M = %g +- %g\n",
         // sim_est_pigs_central
-        stats_mean(sim->central),
-        100.0 * stats_sem(sim->central), 100.0,
+        stats_mean(sim->central), stats_sem(sim->central),
         // sim_est_pigs_virial
-        stats_mean(sim->virial[ibead]),
-        100.0 * stats_sem(sim->virial[ibead]), 100.0,
+        stats_mean(sim->virial[ibead]), stats_sem(sim->virial[ibead]),
         // sim_est_pigs_mixed
-        stats_mean(sim->mixed[ibead]),
-        100.0 * stats_sem(sim->mixed[ibead]), 100.0) < 0)
+        stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
     return false;
 
   return true;
@@ -995,17 +992,17 @@ bool sim_save_const(struct sim const* const sim) {
 }
 
 bool sim_save_mut(struct sim const* const sim) {
-  return sim_res_print(sim, "energy-bead", print_energy_bead, NULL) &&
-    sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL) &&
-    sim_res_print(sim, "posdist", print_posdist, NULL) &&
+  return sim_res_print(sim, "posdist", print_posdist, NULL) &&
     sim_res_print(sim, "raddist", print_raddist, NULL) &&
-    sim_res_print(sim, "polys", print_polys, NULL);
+    sim_res_print(sim, "polys", print_polys, NULL) &&
+    sim_res_print(sim, "energy-bead", print_energy_bead, NULL) &&
+    sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL);
 }
 
 void sim_free(struct sim* const sim) {
   if (sim != NULL) {
-    hist_free(sim->g);
-    hist_free(sim->p);
+    hist_free(sim->raddist);
+    hist_free(sim->posdist);
 
     for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
       stats_free(sim->mixed[ibead]);
@@ -1037,6 +1034,8 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
   dynamic_assert(nprod <= SQRT_SIZE_MAX, "too many production steps");
   dynamic_assert(nthrmrec <= nthrm, "too many thermalization recording steps");
   dynamic_assert(nprodrec <= nprod, "too many production recording steps");
+
+  dynamic_assert(ndiv <= nthrm + nprod, "too many divisions or too few steps");
 
   dynamic_assert(length > 0.0, "empty simulation box");
   dynamic_assert(mass > 0.0, "negative default mass");
@@ -1104,12 +1103,12 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
         p = false;
     }
 
-    sim->p = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
-    if (sim->p == NULL)
+    sim->posdist = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
+    if (sim->posdist == NULL)
       p = false;
 
-    sim->g = hist_alloc(1, ndiv, 0.0, length / 2.0);
-    if (sim->g == NULL)
+    sim->raddist = hist_alloc(1, ndiv, 0.0, length / 2.0);
+    if (sim->raddist == NULL)
       p = false;
 
     sim->params.ssm.acc = 0;
@@ -1168,11 +1167,9 @@ bool sim_run(struct sim* const sim) {
   sim_proposer const proposers[] = {sim_propose_ss, sim_propose_cmd};
   size_t const nproposer = sizeof proposers / sizeof *proposers;
 
-  for (size_t istep = 0;
-      istep < sim->ens.nstep.thrm + sim->ens.nstep.prod;
-      ++istep) {
-    sim_decide_mq(sim, proposers[ran_index(sim->rng, nproposer)](sim));
+  size_t const nstep = sim->ens.nstep.thrm + sim->ens.nstep.prod;
 
+  for (size_t istep = 0, idiv = 0; istep < nstep; ++istep) {
     int signum;
     if (sigs_use(&signum))
       switch (signum) {
@@ -1184,54 +1181,60 @@ bool sim_run(struct sim* const sim) {
           break;
       }
 
-    if (istep < sim->ens.nstep.thrm) {
-      if (sim->ens.nstep.prodrec * sim->ens.istep.thrm >
-          sim->ens.nstep.prod * sim->ens.istep.thrmrec) {
-        if (!print_params(sim, paramsfp, NULL))
-          err_abort(print_params);
+    sim_decide_mq(sim, proposers[ran_index(sim->rng, nproposer)](sim));
 
+    if (istep < sim->ens.nstep.thrm) {
+      if (sim->ens.nstep.thrmrec * sim->ens.istep.thrm >
+          sim->ens.nstep.thrm * sim->ens.istep.thrmrec)
         ++sim->ens.istep.thrmrec;
-      }
 
       ++sim->ens.istep.thrm;
     } else {
-      (void) stats_accum(sim->central, sim_est_pigs_central(sim, NULL));
-
-      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-        (void) stats_accum(sim->virial[ibead],
-            sim_est_pigs_virial(sim, &ibead) / sim->ens.nmemb.poly);
-        (void) stats_accum(sim->mixed[ibead],
-            sim_est_pigs_mixed(sim, &ibead) / sim->ens.nmemb.poly);
-      }
-
-      for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
-        size_t const ibead = sim->ens.nmemb.bead / 2;
-
-        (void) hist_accum(sim->p, sim->ens.r[ipoly].r[ibead].r);
-      }
-
-      for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-        for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly) {
-          size_t const ibead = sim->ens.nmemb.bead / 2;
-
-          double const d = ens_dist(&sim->ens,
-              &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
-
-          (void) hist_accum(sim->g, &d);
-        }
-
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {
-        if (!print_energy(sim, energyfp, NULL))
-          err_abort(print_energy);
+        (void) stats_accum(sim->central, sim_est_pigs_central(sim, NULL));
 
-        if (!print_params(sim, paramsfp, NULL))
-          err_abort(print_params);
+        for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+          (void) stats_accum(sim->virial[ibead],
+              sim_est_pigs_virial(sim, &ibead) / sim->ens.nmemb.poly);
+          (void) stats_accum(sim->mixed[ibead],
+              sim_est_pigs_mixed(sim, &ibead) / sim->ens.nmemb.poly);
+        }
+
+        for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+          // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+        {
+          size_t const ibead = sim->ens.nmemb.bead / 2;
+
+          (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
+        }
+
+        for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+          for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
+            // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+          {
+            size_t const ibead = sim->ens.nmemb.bead / 2;
+
+            double const d = ens_dist(&sim->ens,
+                &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
+
+            (void) hist_accum(sim->raddist, &d);
+          }
 
         ++sim->ens.istep.prodrec;
       }
 
       ++sim->ens.istep.prod;
+    }
+
+    if (sim->ens.nmemb.div * istep > nstep * idiv) {
+      if (!print_params(sim, paramsfp, NULL))
+        err_abort(print_params);
+
+      if (!print_energy(sim, energyfp, NULL))
+        err_abort(print_energy);
+
+      ++idiv;
     }
   }
 
