@@ -138,15 +138,15 @@ double fp_lerp(double, double, double, double, double);
 __attribute__ ((__const__, __pure__))
 double fp_lorp(double, double, double, double, double);
 
-// The call `fp_ballvol(r, d)` returns the volume
+// The call `fp_ball_volume(r, d)` returns the volume
 // of the `d`-dimensional ball of radius `r`.
 __attribute__ ((__const__, __pure__))
-double fp_ballvol(double, size_t);
+double fp_ball_volume(double, size_t);
 
-// The call `fp_ballsa(r, d)` returns the surface area
+// The call `fp_ball_surfarea(r, d)` returns the surface area
 // of the `d`-dimensional ball of radius `r`.
 __attribute__ ((__const__, __pure__))
-double fp_ballsa(double, size_t);
+double fp_ball_surfarea(double, size_t);
 
 // The statement `b = fp_dbalance(a, r)` sets `b` such that
 //

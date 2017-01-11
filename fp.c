@@ -97,9 +97,12 @@ double fp_lorp(double const x,
 }
 
 // The recurrence relation
-// $V_0(r) = 1$, $V_1(r) = 2 r$, $V_n(r) = (\twopi r^2 / n) V_{n - 2}(r)
+// $V_0(r) = 1$, $V_1(r) = 2 r$, $V_n(r) = (\twopi r^2 / n) V_{n - 2}(r)$
 // is applied.
-double fp_ballvol(double const r, size_t d) {
+double fp_ball_volume(double const r, size_t d) {
+  // return d == 0 ? 1.0 : d == 1 ? 2.0 * r :
+  //   (M_2PI * gsl_pow_2(r) / (double) d) * fp_ball_volume(r, d - 2);
+
   double v = d % 2 == 0 ? 1.0 : 2.0 * r;
 
   while (d > 1) {
@@ -111,11 +114,21 @@ double fp_ballvol(double const r, size_t d) {
 }
 
 // The recurrence relation
-// $V_0(r) = 1$, $V_n(r) = (r / n) A_{n - 1}(r)$,
-// $A_0(r) = 2$, $A_n(r) = \twopi r V_{n - 1}(r)$
+// $A_0(r) = 0$, $A_1(r) = 2$, $A_2(r) = \twopi r$,
+// $A_n(r) = (\twopi r^2 / (n - 2)) A_{n - 2}(r)$
 // is applied.
-double fp_ballsa(double const r, size_t const d) {
-  return d == 0 ? 2.0 : M_2PI * r * fp_ballvol(r, d - 1);
+double fp_ball_surfarea(double const r, size_t d) {
+  // return d == 0 ? 0.0 : d == 1 ? 2.0 : d == 2 ? M_2PI * r :
+  //   (M_2PI * gsl_pow_2(r) / (double) (d - 2)) * fp_ball_surfarea(r, d - 2);
+
+  double a = d == 0 ? 0.0 : d % 2 == 1 ? 2.0 : M_2PI * r;
+
+  while (d > 2) {
+    d -= 2;
+    a *= M_2PI * gsl_pow_2(r) / (double) d;
+  }
+
+  return a;
 }
 
 double fp_dbalance(double const a, double const r) {

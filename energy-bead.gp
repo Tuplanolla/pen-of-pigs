@@ -9,7 +9,7 @@ plot 'run-latest/energy-bead.data' using 1 : 2 \
   with lines linetype 1 title '$E_L$', \
   for [i = -1 : 1 : 2] '' using 1 : ($2 + i * sqrt(C_V) * $3) \
   with lines linetype 1 notitle, \
-  '' using 1 : 5 \
+  '' using 1 : 4 \
   with lines linetype 2 title '$E_M$', \
   for [i = -1 : 1 : 2] '' using 1 : ($4 + i * sqrt(C_M) * $5) \
   with lines linetype 2 notitle

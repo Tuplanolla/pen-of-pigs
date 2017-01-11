@@ -63,6 +63,7 @@ struct poly {
 };
 
 struct ens {
+  bool symmetric;
   bool periodic;
   double length;
   double a;
@@ -79,7 +80,7 @@ struct ens {
 struct sim {
   gsl_rng* rng;
   struct ens ens;
-  struct stats* central;
+  struct stats* pure;
   struct stats* virial[BEAD_MAX];
   struct stats* mixed[BEAD_MAX];
   struct hist* posdist;
@@ -308,7 +309,7 @@ double sim_est_pimc_thermal(struct sim const* const sim,
 }
 
 // TODO This is just `sim_est_pigs_virial` at the central link.
-double sim_est_pigs_central(struct sim const* const sim,
+double sim_est_pigs_pure(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
@@ -357,7 +358,8 @@ double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
   return e - k + v;
 }
 
-// TODO This does not work with zero external potential.
+// TODO This does not work with zero external potential,
+// because the addition should include pair potentials too.
 double sim_est_pigs_mixed(struct sim const* const sim, void const* const p) {
   size_t const ibead = *(size_t const*) p;
 
@@ -498,11 +500,11 @@ void sim_place_lattice(struct sim* const sim, sim_placer const f,
 
 void sim_move_null(__attribute__ ((__unused__)) struct sim* const sim) {}
 
-void sim_move_accept_ss(struct sim* const sim) {
+void sim_move_accept_ssm(struct sim* const sim) {
   ++sim->params.ssm.acc;
 }
 
-void sim_move_reject_ss(struct sim* const sim) {
+void sim_move_reject_ssm(struct sim* const sim) {
   size_t const ipoly = sim->cache.ssm.ipoly;
   size_t const ibead = sim->cache.ssm.ibead;
 
@@ -512,17 +514,17 @@ void sim_move_reject_ss(struct sim* const sim) {
   ++sim->params.ssm.rej;
 }
 
-void sim_move_adjust_ss(struct sim* const sim) {
+void sim_move_adjust_ssm(struct sim* const sim) {
   sim->params.ssm.h = fp_clamp(sim->params.ssm.h *
       fp_cbalance((double) sim->params.ssm.acc, (double) sim->params.ssm.rej),
       DBL_EPSILON, sim->ens.length);
 }
 
-void sim_move_ss(struct sim* const sim,
+void sim_move_ssm(struct sim* const sim,
     size_t const ipoly, size_t const ibead) {
-  sim->accept = sim_move_accept_ss;
-  sim->reject = sim_move_reject_ss;
-  sim->adjust = sim_move_adjust_ss;
+  sim->accept = sim_move_accept_ssm;
+  sim->reject = sim_move_reject_ssm;
+  sim->adjust = sim_move_adjust_ssm;
 
   sim->cache.ssm.ipoly = ipoly;
   sim->cache.ssm.ibead = ibead;
@@ -616,37 +618,37 @@ void sim_move_swap(
   err_abort(NULL);
 }
 
-double sim_propose_ss(struct sim* const sim) {
+double sim_propose_ssm(struct sim* const sim) {
   size_t const ipoly = ran_index(sim->rng, sim->ens.nmemb.poly);
   size_t const ibead = ran_index(sim->rng, sim->ens.nmemb.bead);
 
-  double const V0 = ens_potint_bead(&sim->ens, ibead) +
+  double const v0 = ens_potint_bead(&sim->ens, ibead) +
     ens_potext_polybead(&sim->ens, ipoly, ibead);
-  double const K0 = ens_kin_polybead(&sim->ens, ipoly, ibead);
+  double const k0 = ens_kin_polybead(&sim->ens, ipoly, ibead);
 
-  sim_move_ss(sim, ipoly, ibead);
+  sim_move_ssm(sim, ipoly, ibead);
 
-  double const V1 = ens_potint_bead(&sim->ens, ibead) +
+  double const v1 = ens_potint_bead(&sim->ens, ibead) +
     ens_potext_polybead(&sim->ens, ipoly, ibead);
-  double const K1 = ens_kin_polybead(&sim->ens, ipoly, ibead);
+  double const k1 = ens_kin_polybead(&sim->ens, ipoly, ibead);
 
-  return sim->ens.epsilon * (K1 + V1 - K0 - V0);
+  return sim->ens.epsilon * (k1 + v1 - k0 - v0);
 }
 
 double sim_propose_cmd(struct sim* const sim) {
   size_t const ipoly = ran_index(sim->rng, sim->ens.nmemb.poly);
 
-  double const V0 = ens_pot_total(&sim->ens);
+  double const v0 = ens_pot_total(&sim->ens);
 
   sim_move_cmd(sim, ipoly);
 
-  double const V1 = ens_pot_total(&sim->ens);
+  double const v1 = ens_pot_total(&sim->ens);
 
-  return sim->ens.epsilon * (V1 - V0);
+  return sim->ens.epsilon * (v1 - v0);
 }
 
-void sim_decide_mq(struct sim* const sim, double const DeltaS) {
-  if (DeltaS > 0.0 && exp(-DeltaS) < ran_uopen(sim->rng, 1.0))
+void sim_decide_mq(struct sim* const sim, double const delta_s) {
+  if (delta_s > 0.0 && exp(-delta_s) < ran_uopen(sim->rng, 1.0))
     sim->reject(sim);
   else
     sim->accept(sim);
@@ -791,8 +793,8 @@ bool print_energy(struct sim const* const sim, FILE* const fp,
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
   if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n", sim->ens.istep.prod,
-        sim_est_pigs_central(sim, NULL),
-        stats_mean(sim->central), stats_sem(sim->central),
+        sim_est_pigs_pure(sim, NULL),
+        stats_mean(sim->pure), stats_sem(sim->pure),
         sim_est_pigs_virial(sim, &ibead),
         stats_mean(sim->virial[ibead]), stats_sem(sim->virial[ibead]),
         sim_est_pigs_mixed(sim, &ibead),
@@ -807,7 +809,7 @@ bool print_energy_corrtime(struct sim const* const sim, FILE* const fp,
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
   if (fprintf(fp, "%g %g %g\n",
-        stats_corrtime(sim->central),
+        stats_corrtime(sim->pure),
         stats_corrtime(sim->virial[ibead]),
         stats_corrtime(sim->mixed[ibead])) < 0)
     return false;
@@ -858,13 +860,13 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r1;
     hist_cunbin(sim->raddist, &r1, ibin);
 
-    double const v = fp_ballvol(r1, sim->ens.nmemb.dim) -
-      fp_ballvol(r0, sim->ens.nmemb.dim);
+    double const v = fp_ball_volume(r1, sim->ens.nmemb.dim) -
+      fp_ball_volume(r0, sim->ens.nmemb.dim);
 
     double r;
     hist_unbin(sim->raddist, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, hist_normhits(sim->raddist, ibin) * v) < 0)
+    if (fprintf(fp, "%g %g\n", r, hist_hits(sim->raddist, ibin) / v) < 0)
       return false;
   }
 
@@ -924,8 +926,8 @@ bool print_progress(struct sim const* const sim, FILE* const fp,
 bool print_results(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
-        stats_mean(sim->central), stats_corrsem(sim->central),
-        stats_corrtime(sim->central)) < 0)
+        stats_mean(sim->pure), stats_corrsem(sim->pure),
+        stats_corrtime(sim->pure)) < 0)
     return false;
 
   return true;
@@ -938,8 +940,8 @@ bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
   if (fprintf(fp, "E_C = %g +- %g\n"
         "E_V = %g +- %g\n"
         "E_M = %g +- %g\n",
-        // sim_est_pigs_central
-        stats_mean(sim->central), stats_sem(sim->central),
+        // sim_est_pigs_pure
+        stats_mean(sim->pure), stats_sem(sim->pure),
         // sim_est_pigs_virial
         stats_mean(sim->virial[ibead]), stats_sem(sim->virial[ibead]),
         // sim_est_pigs_mixed
@@ -1008,7 +1010,7 @@ void sim_free(struct sim* const sim) {
       stats_free(sim->mixed[ibead]);
       stats_free(sim->virial[ibead]);
     }
-    stats_free(sim->central);
+    stats_free(sim->pure);
 
     gsl_rng_free(sim->rng);
   }
@@ -1020,7 +1022,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     size_t const nbead, size_t const nsubdiv, size_t const ndiv,
     size_t const nthrm, size_t const nprod,
     size_t const nthrmrec, size_t const nprodrec,
-    bool const periodic,
+    bool const symmetric, bool const periodic,
     double const length, double const mass, double const betau) {
   dynamic_assert(ndim <= DIM_MAX, "too many dimensions");
   dynamic_assert(npoly <= POLY_MAX, "too many polymers");
@@ -1053,6 +1055,7 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     else if (!ran_dateid(sim->rng, "run", sim->id, sizeof sim->id))
       p = false;
 
+    sim->ens.symmetric = symmetric;
     sim->ens.periodic = periodic;
     sim->ens.length = length;
 
@@ -1089,8 +1092,8 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->reject = sim_move_null;
     sim->adjust = sim_move_null;
 
-    sim->central = stats_alloc(nprod, true);
-    if (sim->central == NULL)
+    sim->pure = stats_alloc(nprod, true);
+    if (sim->pure == NULL)
       p = false;
 
     for (size_t ibead = 0; ibead < nbead; ++ibead) {
@@ -1120,7 +1123,12 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->params.cmd.h = length / 2.0;
 
     sim_weight_const(sim, &mass);
-    sim_perm_close(sim, NULL);
+
+    if (symmetric)
+      sim_perm_close(sim, NULL);
+    else
+      sim_perm_open(sim, NULL);
+
     sim_place_point(sim, sim_placer_point, NULL);
   }
 
@@ -1164,7 +1172,7 @@ bool sim_run(struct sim* const sim) {
   if (energyfp == NULL)
     err_abort(sim_res_open);
 
-  sim_proposer const proposers[] = {sim_propose_ss, sim_propose_cmd};
+  sim_proposer const proposers[] = {sim_propose_ssm, sim_propose_cmd};
   size_t const nproposer = sizeof proposers / sizeof *proposers;
 
   size_t const nstep = sim->ens.nstep.thrm + sim->ens.nstep.prod;
@@ -1192,7 +1200,8 @@ bool sim_run(struct sim* const sim) {
     } else {
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {
-        (void) stats_accum(sim->central, sim_est_pigs_central(sim, NULL));
+        (void) stats_accum(sim->pure,
+            sim_est_pigs_pure(sim, NULL) / sim->ens.nmemb.poly);
 
         for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
           (void) stats_accum(sim->virial[ibead],
@@ -1202,24 +1211,32 @@ bool sim_run(struct sim* const sim) {
         }
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-          // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
-        {
-          size_t const ibead = sim->ens.nmemb.bead / 2;
+          if (sim->ens.symmetric)
+            for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+              (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
+          else {
+            size_t const ibead = sim->ens.nmemb.bead / 2;
 
-          (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
-        }
+            (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
+          }
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
           for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
-            // for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
-          {
-            size_t const ibead = sim->ens.nmemb.bead / 2;
+            if (sim->ens.symmetric)
+              for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+                double const d = ens_dist(&sim->ens,
+                    &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
 
-            double const d = ens_dist(&sim->ens,
-                &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
+                (void) hist_accum(sim->raddist, &d);
+              }
+            else {
+              size_t const ibead = sim->ens.nmemb.bead / 2;
 
-            (void) hist_accum(sim->raddist, &d);
-          }
+              double const d = ens_dist(&sim->ens,
+                  &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
+
+              (void) hist_accum(sim->raddist, &d);
+            }
 
         ++sim->ens.istep.prodrec;
       }

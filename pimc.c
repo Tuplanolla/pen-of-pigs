@@ -113,7 +113,7 @@ int main(int const argc, char** const argv) {
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            false, length, 1.0, beta);
+            true, false, length, 1.0, beta);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
@@ -124,7 +124,6 @@ int main(int const argc, char** const argv) {
         double const e = (double) ndim * q / tanh(q * beta);
         (void) printf("Expected for QHO: E = %f (T = %f)\n", e, temp);
 
-        sim_perm_close(sim, NULL);
         sim_set_potext(sim, potext_harm);
 
         if (!sim_run(sim)) {

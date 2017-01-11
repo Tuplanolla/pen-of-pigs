@@ -132,14 +132,13 @@ int main(int const argc, char** const argv) {
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            false, length, mass, tau);
+            false, false, length, mass, tau);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
           return EXIT_FAILURE;
         }
 
-        sim_perm_open(sim, NULL);
         sim_set_potext(sim, potext_harm);
 
         if (!sim_run(sim)) {
@@ -165,14 +164,14 @@ int main(int const argc, char** const argv) {
 
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
-            true, length, 1.0, tau);
+            false, true, length, 1.0, tau);
         if (sim == NULL) {
           (void) fprintf(stderr, "Failed to allocate memory.\n");
 
           return EXIT_FAILURE;
         }
 
-        sim_perm_open(sim, NULL);
+        // TODO Disable this to find the normalization constant.
         sim_set_potint(sim, pot_lj612);
         sim_place_lattice(sim, sim_placer_random, NULL);
 
