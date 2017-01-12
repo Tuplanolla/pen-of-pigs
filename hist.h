@@ -85,6 +85,12 @@ double hist_min(struct hist const*);
 __attribute__ ((__nonnull__, __pure__))
 double hist_max(struct hist const*);
 
+// The call `hist_length(hist)` returns
+// the length between the limits of the valid range of the histogram `hist`.
+// The time complexity is $O(1)$.
+__attribute__ ((__nonnull__, __pure__))
+double hist_length(struct hist const*);
+
 // The call `hist_hits(hist, i)` returns
 // the hit count for bin `i` in the histogram `hist`.
 // The time complexity is $O(1)$.

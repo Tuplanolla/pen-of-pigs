@@ -269,7 +269,8 @@ double ens_potint_bead(struct ens const* const ens, size_t const ibead) {
     for (size_t jpoly = ipoly + 1; jpoly < ens->nmemb.poly; ++jpoly)
       v += ens->potint(ens, &ens->r[ipoly].r[ibead], &ens->r[jpoly].r[ibead]);
 
-  return v;
+  // TODO Is this `2.0` appropriate?
+  return 2.0 * v;
 }
 
 double ens_potext_polybead(struct ens const* const ens,
@@ -299,9 +300,11 @@ double ens_pot_total(struct ens const* const ens) {
   return v;
 }
 
-// TODO This is currently not used, because it works reliably.
+// TODO This is currently not used, because it used to work reliably.
 double sim_est_pimc_thermal(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
+  return 0.0;
+
   double const e = ens_kindf(&sim->ens);
   double const k = ens_kin_total(&sim->ens) / (double) sim->ens.nmemb.bead;
   double const v = ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
@@ -309,7 +312,7 @@ double sim_est_pimc_thermal(struct sim const* const sim,
   return e - k + v;
 }
 
-// TODO This is just `sim_est_pigs_virial` at the central link.
+// TODO This is just wrong.
 double sim_est_pigs_pure(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const ibead = sim->ens.nmemb.bead / 2;
@@ -337,7 +340,8 @@ double sim_est_pigs_pure(struct sim const* const sim,
           gsl_ran_gaussian(sim->rng,
               sqrt(sim->ens.epsilon / sim->ens.r[jpoly].mass));
 
-      v += sim->ens.potint(&sim->ens, &r0, &r1);
+      // TODO Is this `2.0` appropriate?
+      v += 2.0 * sim->ens.potint(&sim->ens, &r0, &r1);
     }
 
     v += ens_potext_polybead(&sim->ens, ipoly, ibead);
@@ -359,17 +363,14 @@ double sim_est_pigs_virial(struct sim const* const sim, void const* const p) {
   return e - k + v;
 }
 
-// TODO This does not work with zero external potential,
-// because the addition should include pair potentials too.
-double sim_est_pigs_mixed(struct sim const* const sim, void const* const p) {
-  size_t const ibead = *(size_t const*) p;
+double sim_est_pigs_mixed(struct sim const* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
+  return 0.0;
 
-  double v = 0.0;
+  // TODO This is too symmetric.
+  double const v = ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
 
-  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
-    v += sim->ens.potext(&sim->ens, &sim->ens.r[ipoly].r[ibead]);
-
-  return 2.0 * v;
+  return v;
 }
 
 void sim_weight_const(struct sim* const sim, void const* const p) {
@@ -855,7 +856,7 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
       if (fprintf(fp, "%g ", r.r[idim]) < 0)
         return false;
 
-    if (fprintf(fp, "%g\n", hist_normhits(sim->posdist, ibin)) < 0)
+    if (fprintf(fp, "%g\n", hist_normhits(sim->posdist, ibin) / 2.0) < 0)
       return false;
   }
 
@@ -865,6 +866,8 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
 bool print_raddist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const nbin = hist_nbin(sim->raddist);
+
+  double const vd = pow(hist_length(sim->raddist), sim->ens.nmemb.dim);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     double r0;
@@ -879,7 +882,8 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r;
     hist_unbin(sim->raddist, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, hist_hits(sim->raddist, ibin) / v) < 0)
+    if (fprintf(fp, "%g %g\n", r,
+          hist_normhits(sim->raddist, ibin) * (vd / v)) < 0)
       return false;
   }
 
@@ -931,16 +935,6 @@ bool print_progress(struct sim const* const sim, FILE* const fp,
         100 * sim->ens.istep.thrm / sim->ens.nstep.thrm,
         sim->ens.nstep.prod == 0 ? 100 :
         100 * sim->ens.istep.prod / sim->ens.nstep.prod) < 0)
-    return false;
-
-  return true;
-}
-
-bool print_results(struct sim const* const sim, FILE* const fp,
-    __attribute__ ((__unused__)) void const* const p) {
-  if (fprintf(fp, "E = %g +- %g (kappa = %g)\n",
-        stats_mean(sim->pure), stats_corrsem(sim->pure),
-        stats_corrtime(sim->pure)) < 0)
     return false;
 
   return true;

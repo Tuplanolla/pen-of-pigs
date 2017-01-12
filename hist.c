@@ -137,6 +137,10 @@ double hist_max(struct hist const* const hist) {
   return hist->b;
 }
 
+double hist_length(struct hist const* const hist) {
+  return hist->b - hist->a;
+}
+
 size_t hist_hits(struct hist const* const hist, size_t const i) {
   return hist->m[i];
 }
