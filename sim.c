@@ -11,6 +11,7 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
+#include <errno.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
@@ -498,6 +499,52 @@ void sim_place_lattice(struct sim* const sim, sim_placer const f,
   }
 }
 
+// TODO This does not handle errors gracefully.
+void sim_place_file(struct sim* const sim,
+    __attribute__ ((__unused__)) sim_placer const f, void const* const p) {
+  char const* const path = (char const*) p;
+
+  FILE* const fp = fopen(path, "r");
+  if (fp != NULL) {
+    char buf[BUFSIZ];
+
+    for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
+      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
+        for (size_t icol = 0; icol < sim->ens.nmemb.dim + 1; ++icol) {
+          size_t i = 0;
+          while (i < sizeof buf) {
+            int const c = fgetc(fp);
+            if (c == EOF)
+              break;
+
+            if (isspace(c)) {
+              if (i > 0)
+                break;
+            } else {
+              buf[i] = (char) c;
+              ++i;
+            }
+          }
+
+          buf[i] = '\0';
+
+          char* endptr;
+          errno = 0;
+          double const y = strtod(buf, &endptr);
+          if (icol > 0) {
+            size_t const idim = icol - 1;
+
+            if (errno != 0 || endptr == buf)
+              sim->ens.r[ipoly].r[ibead].r[idim] = NAN;
+            else
+              sim->ens.r[ipoly].r[ibead].r[idim] = y;
+          }
+        }
+
+    (void) fclose(fp);
+  }
+}
+
 void sim_move_null(__attribute__ ((__unused__)) struct sim* const sim) {}
 
 void sim_move_accept_ssm(struct sim* const sim) {
@@ -582,40 +629,6 @@ void sim_move_cmd(struct sim* const sim, size_t const ipoly) {
         f(sim->ens.r[ipoly].r[ibead].r[idim] + x, sim->ens.length);
     }
   }
-}
-
-void sim_move_accept_bisect(
-    __attribute__ ((__unused__)) struct sim* const sim) {
-  err_abort(NULL);
-}
-
-void sim_move_reject_bisect(
-    __attribute__ ((__unused__)) struct sim* const sim) {
-  err_abort(NULL);
-}
-
-void sim_move_bisect(
-    __attribute__ ((__unused__)) struct sim* const sim,
-    __attribute__ ((__unused__)) size_t const ipoly,
-    __attribute__ ((__unused__)) size_t const ibead) {
-  err_abort(NULL);
-}
-
-void sim_move_accept_swap(
-    __attribute__ ((__unused__)) struct sim* const sim) {
-  err_abort(NULL);
-}
-
-void sim_move_reject_swap(
-    __attribute__ ((__unused__)) struct sim* const sim) {
-  err_abort(NULL);
-}
-
-void sim_move_swap(
-    __attribute__ ((__unused__)) struct sim* const sim,
-    __attribute__ ((__unused__)) size_t const ipoly,
-    __attribute__ ((__unused__)) size_t const ibead) {
-  err_abort(NULL);
 }
 
 double sim_propose_ssm(struct sim* const sim) {
@@ -1162,7 +1175,7 @@ bool sim_run(struct sim* const sim) {
   if (!sim_save_const(sim))
     err_abort(sim_save_const);
 
-  printf("Starting simulation '%s'...\n", sim->id);
+  (void) printf("Starting simulation '%s'...\n", sim->id);
 
   FILE* const paramsfp = sim_res_open(sim, "params");
   if (paramsfp == NULL)
@@ -1172,8 +1185,8 @@ bool sim_run(struct sim* const sim) {
   if (energyfp == NULL)
     err_abort(sim_res_open);
 
-  sim_proposer const proposers[] = {sim_propose_ssm, sim_propose_cmd};
-  size_t const nproposer = sizeof proposers / sizeof *proposers;
+  sim_proposer const prop[] = {sim_propose_ssm, sim_propose_cmd};
+  size_t const nprop = sizeof prop / sizeof *prop;
 
   size_t const nstep = sim->ens.nstep.thrm + sim->ens.nstep.prod;
 
@@ -1189,7 +1202,7 @@ bool sim_run(struct sim* const sim) {
           break;
       }
 
-    sim_decide_mq(sim, proposers[ran_index(sim->rng, nproposer)](sim));
+    sim_decide_mq(sim, prop[ran_index(sim->rng, nprop)](sim));
 
     if (istep < sim->ens.nstep.thrm) {
       if (sim->ens.nstep.thrmrec * sim->ens.istep.thrm >
@@ -1261,7 +1274,7 @@ bool sim_run(struct sim* const sim) {
   if (!sim_res_close(sim, paramsfp))
     err_abort(sim_res_close);
 
-  printf("Saving results of simulation '%s'...\n", sim->id);
+  (void) printf("Saving results of simulation '%s'...\n", sim->id);
 
   if (!sim_save_mut(sim))
     err_abort(sim_save_mut);

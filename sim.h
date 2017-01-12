@@ -187,14 +187,17 @@ __attribute__ ((__nonnull__ (1, 3)))
 void sim_placer_knot(struct sim*, size_t, struct bead const*, double,
     void const*);
 
-__attribute__ ((__nonnull__ (1, 2)))
+__attribute__ ((__nonnull__ (1)))
 void sim_place_point(struct sim*, sim_placer, void const*);
 
-__attribute__ ((__nonnull__ (1, 2)))
+__attribute__ ((__nonnull__ (1)))
 void sim_place_random(struct sim*, sim_placer, void const*);
 
-__attribute__ ((__nonnull__ (1, 2)))
+__attribute__ ((__nonnull__ (1)))
 void sim_place_lattice(struct sim*, sim_placer, void const*);
+
+__attribute__ ((__nonnull__ (1)))
+void sim_place_file(struct sim*, sim_placer, void const*);
 
 // TODO Document these movers.
 
@@ -226,24 +229,6 @@ void sim_move_adjust_cmd(struct sim*);
 
 __attribute__ ((__nonnull__))
 void sim_move_cmd(struct sim*, size_t);
-
-__attribute__ ((__noreturn__))
-void sim_move_accept_bisect(struct sim*);
-
-__attribute__ ((__noreturn__))
-void sim_move_reject_bisect(struct sim*);
-
-__attribute__ ((__noreturn__))
-void sim_move_bisect(struct sim*, size_t, size_t);
-
-__attribute__ ((__noreturn__))
-void sim_move_accept_swap(struct sim*);
-
-__attribute__ ((__noreturn__))
-void sim_move_reject_swap(struct sim*);
-
-__attribute__ ((__noreturn__))
-void sim_move_swap(struct sim*, size_t, size_t);
 
 // TODO Document these move proposers.
 

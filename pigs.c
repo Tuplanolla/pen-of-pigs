@@ -174,6 +174,7 @@ int main(int const argc, char** const argv) {
         // TODO Disable this to find the normalization constant.
         sim_set_potint(sim, pot_lj612);
         sim_place_lattice(sim, sim_placer_random, NULL);
+        sim_place_file(sim, NULL, "calc-run-2017-01-12-01-35-00-ffef1344/polys.data");
 
         if (!sim_run(sim)) {
           (void) fprintf(stderr, "Failed to run simulation.\n");
