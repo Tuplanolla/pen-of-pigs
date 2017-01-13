@@ -36,8 +36,11 @@ build: pigs pimc
 plot: plots.pdf
 
 run: build
-	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./pigs \
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./pimc \
 	-s qho -d 1 -N 1 -M 32 -k 64 -K 64 -h 131072 -p 262144 -H 32768 -P 65536 \
+	-L 8.0 -m 1.0 -T 0.125
+	GSL_RNG_TYPE=mt19937 GSL_RNG_SEED=0 time -v ./pigs \
+	-s qho -d 1 -N 1 -M 32 -k 64 -K 64 -h 131072 -p 262144 -H 131072 -P 262144 \
 	-L 8.0 -m 1.0 -t 8.0
 
 check: build

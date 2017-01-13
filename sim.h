@@ -69,11 +69,12 @@ __attribute__ ((__nonnull__, __pure__))
 double ens_kin_polybead_bw(struct ens const*, size_t, size_t);
 
 // Kinetic energy within a polymer from one bead to the next one.
-// $\lambda = \hbar / 2 m$
-// $K = x^2 / 4 \lambda \tau^2 = M x^2$
-// $M = m / 2 \hbar \tau^2$
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_polybead_fw(struct ens const*, size_t, size_t);
+
+// Kinetic energy within a polymer from one bead to its two neighbors.
+__attribute__ ((__nonnull__, __pure__))
+double ens_kin_polybead(struct ens const*, size_t, size_t);
 
 // Kinetic energy within a polymer from each bead to the previous one.
 __attribute__ ((__nonnull__, __pure__))
@@ -83,9 +84,9 @@ double ens_kin_bead_bw(struct ens const*, size_t);
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_bead_fw(struct ens const*, size_t);
 
-// Kinetic energy within a polymer from one bead to its two neighbors.
+// Kinetic energy within a polymer from all of its beads to their neighbors.
 __attribute__ ((__nonnull__, __pure__))
-double ens_kin_polybead(struct ens const*, size_t, size_t);
+double ens_kin_bead(struct ens const*, size_t);
 
 // Kinetic energy within a polymer.
 __attribute__ ((__nonnull__, __pure__))
@@ -121,21 +122,17 @@ double ens_pot_total(struct ens const*);
 
 typedef double (* sim_est)(struct sim const*, void const*);
 
-// Thermodynamic energy estimator for closed polymers.
-// $\langle E_T\rangle = \frac 1{M \tau} \sum_{k = 1}^M
-// \Bigl\langle\frac{d N} 2
-// - \frac{|R_{k + 1 \bmod M} - R_k|^2}{4 \lambda \tau}
-// + \tau V(R_k)\Bigr\rangle$
+// Thermodynamic energy estimator.
 __attribute__ ((__nonnull__ (1)))
-double sim_est_pimc_thermal(struct sim const*, void const*);
+double sim_est_thermal(struct sim const*, void const*);
 
-// TODO Thermodynamic energy estimator for open polymers.
+// Mixed energy estimator.
 __attribute__ ((__nonnull__ (1)))
-double sim_est_pigs_virial(struct sim const*, void const*);
+double sim_est_mixed(struct sim const*, void const*);
 
-// TODO Crap energy estimator for open polymers.
+// Virial energy estimator.
 __attribute__ ((__nonnull__ (1)))
-double sim_est_pigs_mixed(struct sim const*, void const*);
+double sim_est_virial(struct sim const*, void const*);
 
 // The call `sim_set_potint(sim, f)` sets `f`
 // as the internal (polymer-to-polymer) potential of the simulation `sim`.
@@ -207,16 +204,16 @@ __attribute__ ((__nonnull__))
 void sim_move_null(struct sim*);
 
 __attribute__ ((__nonnull__))
-void sim_move_accept_ss(struct sim*);
+void sim_move_accept_ssm(struct sim*);
 
 __attribute__ ((__nonnull__))
-void sim_move_reject_ss(struct sim*);
+void sim_move_reject_ssm(struct sim*);
 
 __attribute__ ((__nonnull__))
-void sim_move_adjust_ss(struct sim*);
+void sim_move_adjust_ssm(struct sim*);
 
 __attribute__ ((__nonnull__))
-void sim_move_ss(struct sim*, size_t, size_t);
+void sim_move_ssm(struct sim*, size_t, size_t);
 
 __attribute__ ((__nonnull__))
 void sim_move_accept_cmd(struct sim*);
@@ -235,7 +232,7 @@ void sim_move_cmd(struct sim*, size_t);
 typedef double (* sim_proposer)(struct sim*);
 
 __attribute__ ((__nonnull__))
-double sim_propose_ss(struct sim*);
+double sim_propose_ssm(struct sim*);
 
 __attribute__ ((__nonnull__))
 double sim_propose_cmd(struct sim*);
@@ -288,6 +285,9 @@ bool print_ndiv(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
 bool print_energy_bead(struct sim const*, FILE*, void const*);
+
+__attribute__ ((__nonnull__ (1, 2)))
+bool print_energy_link(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
 bool print_energy(struct sim const*, FILE*, void const*);
