@@ -1,6 +1,7 @@
 #include "hist.h"
 #include "fp.h"
 #include "size.h"
+#include <gsl/gsl_math.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -141,6 +142,10 @@ double hist_length(struct hist const* const hist) {
   return hist->b - hist->a;
 }
 
+double hist_volume(struct hist const* const hist) {
+  return gsl_pow_uint(hist->b - hist->a, (unsigned int) hist->ndim);
+}
+
 size_t hist_hits(struct hist const* const hist, size_t const i) {
   return hist->m[i];
 }
@@ -150,6 +155,6 @@ size_t hist_sumhits(struct hist const* const hist) {
 }
 
 double hist_normhits(struct hist const* const hist, size_t const i) {
-  return hist->nsum == 0 ? 0.0 :
-    (hist->b - hist->a) * (double) hist->m[i] / (double) hist->nsum;
+  return hist->nsum == 0 ? 0.0 : (double) hist->m[i] /
+    (hist_volume(hist) * ((double) hist->nsum / (double) hist->ncub));
 }

@@ -82,9 +82,9 @@ struct ens {
 struct sim {
   gsl_rng* rng;
   struct ens ens;
-  struct stats* thermal[BEAD_MAX];
-  struct stats* mixed[BEAD_MAX];
-  struct stats* virial[BEAD_MAX];
+  struct stats* thermal;
+  struct stats* mixed;
+  struct stats* virial;
   struct hist* posdist;
   struct hist* raddist;
   sim_decider accept;
@@ -116,8 +116,6 @@ struct sim {
   char id[BUFSIZ];
 };
 
-typedef double (* sim_wrapper)(double, double);
-
 double ens_pot_zero(
     __attribute__ ((__unused__)) struct ens const* const ens,
     __attribute__ ((__unused__)) struct bead const* const r0,
@@ -134,10 +132,12 @@ double ens_potext_zero(
 double ens_norm2(struct ens const* const ens, struct bead const* const r) {
   double s = 0.0;
 
-  sim_wrapper const f = ens->periodic ? fp_swrap : fp_constant;
-
-  for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
-    s += gsl_pow_2(f(r->r[idim], ens->length));
+  if (ens->periodic)
+    for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
+      s += gsl_pow_2(fp_swrap(r->r[idim], ens->length));
+  else
+    for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
+      s += gsl_pow_2(r->r[idim]);
 
   return s;
 }
@@ -150,10 +150,12 @@ double ens_dist2(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
   double s = 0.0;
 
-  sim_wrapper const f = ens->periodic ? fp_swrap : fp_constant;
-
-  for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
-    s += gsl_pow_2(f(r1->r[idim] - r0->r[idim], ens->length));
+  if (ens->periodic)
+    for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
+      s += gsl_pow_2(fp_swrap(r1->r[idim] - r0->r[idim], ens->length));
+  else
+    for (size_t idim = 0; idim < ens->nmemb.dim; ++idim)
+      s += gsl_pow_2(r1->r[idim] - r0->r[idim]);
 
   return s;
 }
@@ -172,7 +174,7 @@ void sim_set_potext(struct sim* const sim, ens_potext const v) {
 }
 
 double ens_kindf(struct ens const* const ens) {
-  return (double) ens->nmemb.dim / (2.0 * ens->epsilon);
+  return (double) (ens->nmemb.dim * ens->nmemb.poly) / (2.0 * ens->epsilon);
 }
 
 double ens_kin_polybead_bw(struct ens const* const ens,
@@ -221,21 +223,6 @@ double ens_kin_polybead_fw(struct ens const* const ens,
   }
 }
 
-double ens_kin_polybead(struct ens const* const ens,
-    size_t const ipoly, size_t const ibead) {
-  return ens_kin_polybead_bw(ens, ipoly, ibead) +
-    ens_kin_polybead_fw(ens, ipoly, ibead);
-}
-
-double ens_kin_bead_fw(struct ens const* const ens, size_t const ibead) {
-  double k = 0.0;
-
-  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
-    k += ens_kin_polybead_fw(ens, ipoly, ibead);
-
-  return k;
-}
-
 double ens_kin_bead_bw(struct ens const* const ens, size_t const ibead) {
   double k = 0.0;
 
@@ -245,9 +232,13 @@ double ens_kin_bead_bw(struct ens const* const ens, size_t const ibead) {
   return k;
 }
 
-double ens_kin_bead(struct ens const* const ens, size_t const ibead) {
-  return ens_kin_bead_bw(ens, ibead) +
-    ens_kin_bead_fw(ens, ibead);
+double ens_kin_bead_fw(struct ens const* const ens, size_t const ibead) {
+  double k = 0.0;
+
+  for (size_t ipoly = 0; ipoly < ens->nmemb.poly; ++ipoly)
+    k += ens_kin_polybead_fw(ens, ipoly, ibead);
+
+  return k;
 }
 
 double ens_kin_poly(struct ens const* const ens, size_t const ipoly) {
@@ -268,8 +259,6 @@ double ens_kin_total(struct ens const* const ens) {
   return k;
 }
 
-#define doubler 2.0
-
 double ens_potint_bead(struct ens const* const ens, size_t const ibead) {
   double v = 0.0;
 
@@ -277,8 +266,7 @@ double ens_potint_bead(struct ens const* const ens, size_t const ibead) {
     for (size_t jpoly = ipoly + 1; jpoly < ens->nmemb.poly; ++jpoly)
       v += ens->potint(ens, &ens->r[ipoly].r[ibead], &ens->r[jpoly].r[ibead]);
 
-  // TODO Is this `2.0` appropriate?
-  return doubler * v;
+  return v;
 }
 
 double ens_potext_polybead(struct ens const* const ens,
@@ -308,74 +296,55 @@ double ens_pot_total(struct ens const* const ens) {
   return v;
 }
 
-double sim_est_thermal(struct sim const* const sim, void const* const p) {
-  double const e = ens_kindf(&sim->ens);
-
-  double k;
-  double v;
-
-  if (sim->ens.symmetric) {
-    k = ens_kin_total(&sim->ens) / (double) sim->ens.nmemb.bead;
-    v = ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
-  } else {
-    size_t const ibead = *(size_t const*) p;
-
-    k = ens_kin_bead(&sim->ens, ibead);
-    v = ens_pot_bead(&sim->ens, ibead);
-  }
-
-  return e - k + v;
+double sim_est_thermal(struct sim const* const sim,
+    __attribute__ ((__unused__)) void const* const p) {
+  return sim->ens.symmetric ?
+    ens_kindf(&sim->ens) -
+    (ens_kin_total(&sim->ens) - ens_pot_total(&sim->ens)) /
+    (double) sim->ens.nmemb.bead : NAN;
 }
 
 double sim_est_mixed(struct sim const* const sim, void const* const p) {
-  double v;
-
   if (sim->ens.symmetric)
-    v = ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
+    return 2.0 * ens_pot_total(&sim->ens) / (double) sim->ens.nmemb.bead;
   else {
     size_t const ibead = *(size_t const*) p;
 
-    v = ens_pot_bead(&sim->ens, ibead);
+    return 2.0 * ens_pot_bead(&sim->ens, ibead);
   }
-
-  return 2.0 * v;
 }
 
 double sim_est_virial(struct sim const* const sim, void const* const p) {
-  size_t const ibead = *(size_t const*) p;
+  size_t ibead = *(size_t const*) p;
 
-  double const e = ens_kindf(&sim->ens);
+  if (ibead == 0)
+    return NAN;
+
+  --ibead;
+
+  struct bead r[POLY_MAX];
+  for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
+    double const sigma = sqrt(sim->ens.epsilon / sim->ens.r[ipoly].mass);
+
+    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
+      r[ipoly].r[idim] = (sim->ens.r[ipoly].r[ibead].r[idim] +
+          sim->ens.r[ipoly].r[ibead + 1].r[idim]) / 2 +
+        gsl_ran_gaussian(sim->rng, sigma);
+  }
 
   double k = 0.0;
   double v = 0.0;
 
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
-    k += ens_kin_polybead_bw(&sim->ens, ipoly, ibead);
+    k += ens_kin_polybead_fw(&sim->ens, ipoly, ibead);
 
-    double const sigma0 = sqrt(sim->ens.epsilon / sim->ens.r[ipoly].mass);
+    v += sim->ens.potext(&sim->ens, &r[ipoly]);
 
-    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly) {
-      double const sigma1 = sqrt(sim->ens.epsilon / sim->ens.r[jpoly].mass);
-
-      struct bead r0;
-      struct bead r1;
-      for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
-        r0.r[idim] = (sim->ens.r[ipoly].r[ibead].r[idim] +
-            sim->ens.r[ipoly].r[ibead - 1].r[idim]) / 2 +
-          gsl_ran_gaussian(sim->rng, sigma0);
-        r1.r[idim] = (sim->ens.r[jpoly].r[ibead].r[idim] +
-           sim->ens.r[jpoly].r[ibead - 1].r[idim]) / 2 +
-          gsl_ran_gaussian(sim->rng, sigma1);
-      }
-
-      // TODO Is this `2.0` appropriate?
-      v += doubler * sim->ens.potint(&sim->ens, &r0, &r1);
-    }
-
-    v += ens_potext_polybead(&sim->ens, ipoly, ibead);
+    for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
+      v += sim->ens.potint(&sim->ens, &r[ipoly], &r[jpoly]);
   }
 
-  return e - k + v;
+  return ens_kindf(&sim->ens) - k + v;
 }
 
 void sim_weight_const(struct sim* const sim, void const* const p) {
@@ -551,6 +520,8 @@ void sim_place_file(struct sim* const sim,
   }
 }
 
+typedef double (* sim_wrapper)(double, double);
+
 void sim_move_null(__attribute__ ((__unused__)) struct sim* const sim) {}
 
 void sim_move_accept_ssm(struct sim* const sim) {
@@ -643,13 +614,15 @@ double sim_propose_ssm(struct sim* const sim) {
 
   double const v0 = ens_potint_bead(&sim->ens, ibead) +
     ens_potext_polybead(&sim->ens, ipoly, ibead);
-  double const k0 = ens_kin_polybead(&sim->ens, ipoly, ibead);
+  double const k0 = ens_kin_polybead_bw(&sim->ens, ipoly, ibead) +
+    ens_kin_polybead_fw(&sim->ens, ipoly, ibead);
 
   sim_move_ssm(sim, ipoly, ibead);
 
   double const v1 = ens_potint_bead(&sim->ens, ibead) +
     ens_potext_polybead(&sim->ens, ipoly, ibead);
-  double const k1 = ens_kin_polybead(&sim->ens, ipoly, ibead);
+  double const k1 = ens_kin_polybead_bw(&sim->ens, ipoly, ibead) +
+    ens_kin_polybead_fw(&sim->ens, ipoly, ibead);
 
   return sim->ens.epsilon * (k1 + v1 - k0 - v0);
 }
@@ -796,66 +769,29 @@ bool print_ndiv(struct sim const* const sim, FILE* const fp,
   return true;
 }
 
-bool print_energy_bead(struct sim const* const sim, FILE* const fp,
-    __attribute__ ((__unused__)) void const* const p) {
-  for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
-    if (fprintf(fp, "%g %g %g %g %g\n", (double) ibead * sim->ens.epsilon,
-          stats_mean(sim->thermal[ibead]), stats_sem(sim->thermal[ibead]),
-          stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
-      return false;
-
-  return true;
-}
-
-bool print_energy_link(struct sim const* const sim, FILE* const fp,
-    __attribute__ ((__unused__)) void const* const p) {
-  for (size_t ilink = 0; ilink < sim->ens.nmemb.bead - 1; ++ilink)
-    if (fprintf(fp, "%g %g %g\n", (double) ilink * sim->ens.epsilon,
-          stats_mean(sim->virial[ilink]), stats_sem(sim->virial[ilink])) < 0)
-      return false;
-
-  return true;
-}
-
 bool print_energy(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const ibead = sim->ens.nmemb.bead / 2;
 
-  if (fprintf(fp, "%zu %g %g %g %g %g %g ", sim->ens.istep.prod,
+  if (fprintf(fp, "%zu %g %g %g %g %g %g %g %g %g\n",
+        sim->ens.istep.thrm + sim->ens.istep.prod,
         sim_est_thermal(sim, &ibead),
-        stats_mean(sim->thermal[ibead]), stats_sem(sim->thermal[ibead]),
+        stats_mean(sim->thermal), stats_sem(sim->thermal),
         sim_est_mixed(sim, &ibead),
-        stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
-    return false;
-
-  if (sim->ens.nmemb.bead > 1) {
-    size_t const ilink = ibead - 1;
-
-    if (fprintf(fp, "%g %g %g\n",
-          sim_est_virial(sim, &ilink),
-          stats_mean(sim->virial[ilink]), stats_sem(sim->virial[ilink])) < 0)
-      return false;
-  } else if (fprintf(fp, "%g %g %g\n", NAN, NAN, NAN) < 0)
+        stats_mean(sim->mixed), stats_sem(sim->mixed),
+        sim_est_virial(sim, &ibead),
+        stats_mean(sim->virial), stats_sem(sim->virial)) < 0)
     return false;
 
   return true;
 }
 
-bool print_energy_corrtime(struct sim const* const sim, FILE* const fp,
+bool print_corrtime(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const ibead = sim->ens.nmemb.bead / 2;
-
-  if (fprintf(fp, "%g %g ",
-        stats_corrtime(sim->thermal[ibead]),
-        stats_corrtime(sim->mixed[ibead])) < 0)
-    return false;
-
-  if (sim->ens.nmemb.bead > 1) {
-    size_t const ilink = ibead - 1;
-
-    if (fprintf(fp, "%g\n", stats_corrtime(sim->virial[ilink])) < 0)
-      return false;
-  } else if (fprintf(fp, "%g\n", NAN) < 0)
+  if (fprintf(fp, "%g %g %g\n",
+        stats_corrtime(sim->thermal),
+        stats_corrtime(sim->mixed),
+        stats_corrtime(sim->virial)) < 0)
     return false;
 
   return true;
@@ -886,7 +822,7 @@ bool print_posdist(struct sim const* const sim, FILE* const fp,
       if (fprintf(fp, "%g ", r.r[idim]) < 0)
         return false;
 
-    if (fprintf(fp, "%g\n", hist_normhits(sim->posdist, ibin) / 2.0) < 0)
+    if (fprintf(fp, "%g\n", hist_normhits(sim->posdist, ibin)) < 0)
       return false;
   }
 
@@ -897,7 +833,8 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const nbin = hist_nbin(sim->raddist);
 
-  double const vd = pow(hist_length(sim->raddist), sim->ens.nmemb.dim);
+  double const c = hist_length(sim->raddist) /
+    fp_ball_volume(hist_length(sim->raddist), sim->ens.nmemb.dim);
 
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     double r0;
@@ -913,7 +850,7 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     hist_unbin(sim->raddist, &r, ibin);
 
     if (fprintf(fp, "%g %g\n", r,
-          hist_normhits(sim->raddist, ibin) * (vd / v)) < 0)
+          c * hist_normhits(sim->raddist, ibin) / v) < 0)
       return false;
   }
 
@@ -972,21 +909,12 @@ bool print_progress(struct sim const* const sim, FILE* const fp,
 
 bool print_wrong_results_fast(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
-  size_t const ibead = sim->ens.nmemb.bead / 2;
-
   if (fprintf(fp, "E_T = %g +- %g\n"
-        "E_M = %g +- %g\n",
-        stats_mean(sim->thermal[ibead]), stats_sem(sim->thermal[ibead]),
-        stats_mean(sim->mixed[ibead]), stats_sem(sim->mixed[ibead])) < 0)
-    return false;
-
-  if (sim->ens.nmemb.bead > 1) {
-    size_t const ilink = ibead - 1;
-
-    if (fprintf(fp, "E_V = %g +- %g\n",
-        stats_mean(sim->virial[ilink]), stats_sem(sim->virial[ilink])) < 0)
-      return false;
-  } else if (fprintf(fp, "E_V = %g +- %g\n", NAN, NAN) < 0)
+        "E_M = %g +- %g\n"
+        "E_V = %g +- %g\n",
+        stats_mean(sim->thermal), stats_sem(sim->thermal),
+        stats_mean(sim->mixed), stats_sem(sim->mixed),
+        stats_mean(sim->virial), stats_sem(sim->virial)) < 0)
     return false;
 
   return true;
@@ -1038,8 +966,7 @@ bool sim_save_mut(struct sim const* const sim) {
   return sim_res_print(sim, "posdist", print_posdist, NULL) &&
     sim_res_print(sim, "raddist", print_raddist, NULL) &&
     sim_res_print(sim, "polys", print_polys, NULL) &&
-    sim_res_print(sim, "energy-bead", print_energy_bead, NULL) &&
-    sim_res_print(sim, "energy-corrtime", print_energy_corrtime, NULL);
+    sim_res_print(sim, "corrtime", print_corrtime, NULL);
 }
 
 void sim_free(struct sim* const sim) {
@@ -1047,13 +974,9 @@ void sim_free(struct sim* const sim) {
     hist_free(sim->raddist);
     hist_free(sim->posdist);
 
-    for (size_t ilink = 0; ilink < sim->ens.nmemb.bead - 1; ++ilink)
-      stats_free(sim->virial[ilink]);
-
-    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-      stats_free(sim->mixed[ibead]);
-      stats_free(sim->thermal[ibead]);
-    }
+    stats_free(sim->virial);
+    stats_free(sim->mixed);
+    stats_free(sim->thermal);
 
     gsl_rng_free(sim->rng);
   }
@@ -1135,21 +1058,17 @@ struct sim* sim_alloc(size_t const ndim, size_t const npoly,
     sim->reject = sim_move_null;
     sim->adjust = sim_move_null;
 
-    for (size_t ibead = 0; ibead < nbead; ++ibead) {
-      sim->thermal[ibead] = stats_alloc(nprod, true);
-      if (sim->thermal[ibead] == NULL)
-        p = false;
+    sim->thermal = stats_alloc(nprod, true);
+    if (sim->thermal == NULL)
+      p = false;
 
-      sim->mixed[ibead] = stats_alloc(nprod, true);
-      if (sim->mixed[ibead] == NULL)
-        p = false;
-    }
+    sim->mixed = stats_alloc(nprod, true);
+    if (sim->mixed == NULL)
+      p = false;
 
-    for (size_t ilink = 0; ilink < sim->ens.nmemb.bead - 1; ++ilink) {
-      sim->virial[ilink] = stats_alloc(nprod, true);
-      if (sim->virial[ilink] == NULL)
-        p = false;
-    }
+    sim->virial = stats_alloc(nprod, true);
+    if (sim->virial == NULL)
+      p = false;
 
     sim->posdist = hist_alloc(ndim, nsubdiv, sim->ens.a, sim->ens.b);
     if (sim->posdist == NULL)
@@ -1245,42 +1164,18 @@ bool sim_run(struct sim* const sim) {
     } else {
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {
-        if (sim->ens.symmetric) {
-          size_t const ibead = sim->ens.nmemb.bead / 2;
+        size_t const ibead = sim->ens.nmemb.bead / 2;
 
-          (void) stats_accum(sim->thermal[ibead],
-              sim_est_thermal(sim, &ibead) / sim->ens.nmemb.poly);
-          (void) stats_accum(sim->mixed[ibead],
-              sim_est_mixed(sim, &ibead) / sim->ens.nmemb.poly);
-        } else
-          for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-            (void) stats_accum(sim->thermal[ibead],
-                sim_est_thermal(sim, &ibead) / sim->ens.nmemb.poly);
-            (void) stats_accum(sim->mixed[ibead],
-                sim_est_mixed(sim, &ibead) / sim->ens.nmemb.poly);
-          }
-
-        if (sim->ens.nmemb.bead > 1) {
-          if (sim->ens.symmetric) {
-            size_t const ilink = sim->ens.nmemb.bead / 2 - 1;
-
-            (void) stats_accum(sim->virial[ilink],
-                sim_est_virial(sim, &ilink) / sim->ens.nmemb.poly);
-          } else
-            for (size_t ilink = 0; ilink < sim->ens.nmemb.bead - 1; ++ilink)
-              (void) stats_accum(sim->virial[ilink],
-                  sim_est_virial(sim, &ilink) / sim->ens.nmemb.poly);
-        }
+        (void) stats_accum(sim->thermal, sim_est_thermal(sim, &ibead));
+        (void) stats_accum(sim->mixed, sim_est_mixed(sim, &ibead));
+        (void) stats_accum(sim->virial, sim_est_virial(sim, &ibead));
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
           if (sim->ens.symmetric)
             for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
               (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
-          else {
-            size_t const ibead = sim->ens.nmemb.bead / 2;
-
+          else
             (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
-          }
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
           for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
@@ -1292,8 +1187,6 @@ bool sim_run(struct sim* const sim) {
                 (void) hist_accum(sim->raddist, &d);
               }
             else {
-              size_t const ibead = sim->ens.nmemb.bead / 2;
-
               double const d = ens_dist(&sim->ens,
                   &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
 

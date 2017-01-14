@@ -72,10 +72,6 @@ double ens_kin_polybead_bw(struct ens const*, size_t, size_t);
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_polybead_fw(struct ens const*, size_t, size_t);
 
-// Kinetic energy within a polymer from one bead to its two neighbors.
-__attribute__ ((__nonnull__, __pure__))
-double ens_kin_polybead(struct ens const*, size_t, size_t);
-
 // Kinetic energy within a polymer from each bead to the previous one.
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_bead_bw(struct ens const*, size_t);
@@ -83,10 +79,6 @@ double ens_kin_bead_bw(struct ens const*, size_t);
 // Kinetic energy within a polymer from each bead to the next one.
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_bead_fw(struct ens const*, size_t);
-
-// Kinetic energy within a polymer from all of its beads to their neighbors.
-__attribute__ ((__nonnull__, __pure__))
-double ens_kin_bead(struct ens const*, size_t);
 
 // Kinetic energy within a polymer.
 __attribute__ ((__nonnull__, __pure__))
@@ -96,7 +88,7 @@ double ens_kin_poly(struct ens const*, size_t);
 __attribute__ ((__nonnull__, __pure__))
 double ens_kin_total(struct ens const*);
 
-// TODO Document these kinetic energy calculators.
+// TODO Document these potential energy calculators.
 
 // Potential energy between certain beads of all polymers.
 __attribute__ ((__nonnull__, __pure__))
@@ -293,7 +285,7 @@ __attribute__ ((__nonnull__ (1, 2)))
 bool print_energy(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
-bool print_energy_corrtime(struct sim const*, FILE*, void const*);
+bool print_corrtime(struct sim const*, FILE*, void const*);
 
 __attribute__ ((__nonnull__ (1, 2)))
 bool print_params(struct sim const*, FILE*, void const*);

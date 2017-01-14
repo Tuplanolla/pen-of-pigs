@@ -86,7 +86,13 @@ __attribute__ ((__nonnull__, __pure__))
 double hist_max(struct hist const*);
 
 // The call `hist_length(hist)` returns
-// the length between the limits of the valid range of the histogram `hist`.
+// the length of one dimension of the histogram `hist`.
+// The time complexity is $O(1)$.
+__attribute__ ((__nonnull__, __pure__))
+double hist_length(struct hist const*);
+
+// The call `hist_volume(hist)` returns
+// the product of the length of all the dimensions of the histogram `hist`.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
 double hist_length(struct hist const*);

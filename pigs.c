@@ -21,12 +21,12 @@ static double const sigma = 2.556;
 __attribute__ ((__nonnull__, __pure__))
 static double pot_lj612(struct ens const* const ens,
     struct bead const* const r0, struct bead const* const r1) {
-  double const d = ens_dist2(ens, r0, r1);
+  double const d2 = ens_dist2(ens, r0, r1);
 
-  if (d == 0.0)
+  if (d2 == 0.0)
     return INFINITY;
   else {
-    double const sigmad2 = gsl_pow_2(sigma) / d;
+    double const sigmad2 = gsl_pow_2(sigma) / d2;
 
     return 4.0 * epsilon * (gsl_pow_6(sigmad2) - gsl_pow_3(sigmad2));
   }
@@ -38,7 +38,7 @@ int main(int const argc, char** const argv) {
   char const* const longstr[] = {
     "sys", "ndim", "npoly", "nbead", "nsubdiv", "ndiv",
     "nthrm", "nprod", "nthrmrec", "nprodrec",
-    "mass", "length", "imagtime"
+    "length", "mass", "imagtime"
   };
   char const* const sys[] = {
     "qho", "he4"
@@ -172,9 +172,8 @@ int main(int const argc, char** const argv) {
         }
 
         // TODO Disable this to find the normalization constant.
-        sim_set_potint(sim, pot_lj612);
-        sim_place_lattice(sim, sim_placer_random, NULL);
-        sim_place_file(sim, NULL, "calc-run-2017-01-12-01-35-00-ffef1344/polys.data");
+        // sim_set_potint(sim, pot_lj612);
+        sim_place_lattice(sim, sim_placer_point, NULL);
 
         if (!sim_run(sim)) {
           (void) fprintf(stderr, "Failed to run simulation.\n");

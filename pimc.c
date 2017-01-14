@@ -21,7 +21,7 @@ int main(int const argc, char** const argv) {
   char const* const longstr[] = {
     "sys", "ndim", "npoly", "nbead", "nsubdiv", "ndiv",
     "nthrm", "nprod", "nthrmrec", "nprodrec",
-    "mass", "length", "temp"
+    "length", "mass", "temp"
   };
   char const* const sys[] = {
     "qho"

@@ -1,14 +1,15 @@
 set terminal epslatex
 set output 'energy.tex'
-C_C = `cat 'run-latest/energy-corrtime.data' | cut -d ' ' -f 1`
-C_M = `cat 'run-latest/energy-corrtime.data' | cut -d ' ' -f 2`
-C_V = `cat 'run-latest/energy-corrtime.data' | cut -d ' ' -f 3`
-set xlabel '$i_P$'
+C_T = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 1`
+C_M = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 2`
+C_V = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 3`
+set xlabel '$i$'
 set ylabel '$E / N$'
 set autoscale xfix
+set yrange [-50 < * : * < 50]
 plot 'run-latest/energy.data' using 1 : 2 \
   with points linetype 1 pointtype 1 title 'T', \
-  for [i = -1 : 1 : 1] '' using 1 : ($3 + i * sqrt(C_C) * $4) \
+  for [i = -1 : 1 : 1] '' using 1 : ($3 + i * sqrt(C_T) * $4) \
   with lines linetype 1 notitle, \
   '' using 1 : 5 \
   with points linetype 2 pointtype 2 title 'M', \
