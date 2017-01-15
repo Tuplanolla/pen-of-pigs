@@ -143,7 +143,7 @@ double hist_length(struct hist const* const hist) {
 }
 
 double hist_volume(struct hist const* const hist) {
-  return gsl_pow_uint(hist->b - hist->a, (unsigned int) hist->ndim);
+  return gsl_pow_int(hist->b - hist->a, (int) hist->ndim);
 }
 
 size_t hist_hits(struct hist const* const hist, size_t const i) {

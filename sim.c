@@ -520,8 +520,6 @@ void sim_place_file(struct sim* const sim,
   }
 }
 
-typedef double (* sim_wrapper)(double, double);
-
 void sim_move_null(__attribute__ ((__unused__)) struct sim* const sim) {}
 
 void sim_move_accept_ssm(struct sim* const sim) {
@@ -553,14 +551,17 @@ void sim_move_ssm(struct sim* const sim,
   sim->cache.ssm.ipoly = ipoly;
   sim->cache.ssm.ibead = ibead;
 
-  sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
-
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
     sim->cache.ssm.r.r[idim] = sim->ens.r[ipoly].r[ibead].r[idim];
 
-    sim->ens.r[ipoly].r[ibead].r[idim] =
-      f(sim->ens.r[ipoly].r[ibead].r[idim] +
-          sim->params.ssm.h * ran_open(sim->rng, 1.0), sim->ens.length);
+    if (sim->ens.periodic)
+      sim->ens.r[ipoly].r[ibead].r[idim] =
+        fp_uwrap(sim->ens.r[ipoly].r[ibead].r[idim] +
+            sim->params.ssm.h * ran_open(sim->rng, 1.0), sim->ens.length);
+    else
+      sim->ens.r[ipoly].r[ibead].r[idim] =
+        sim->ens.r[ipoly].r[ibead].r[idim] +
+        sim->params.ssm.h * ran_open(sim->rng, 1.0);
   }
 }
 
@@ -592,19 +593,25 @@ void sim_move_cmd(struct sim* const sim, size_t const ipoly) {
 
   sim->cache.cmd.ipoly = ipoly;
 
-  sim_wrapper const f = sim->ens.periodic ? fp_uwrap : fp_constant;
-
   for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
-    double const x = sim->params.cmd.h *
-      ran_open(sim->rng, 1.0);
+    double const x = sim->params.cmd.h * ran_open(sim->rng, 1.0);
 
-    for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
-      sim->cache.cmd.r.r[ibead].r[idim] =
-        sim->ens.r[ipoly].r[ibead].r[idim];
+    if (sim->ens.periodic)
+      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+        sim->cache.cmd.r.r[ibead].r[idim] =
+          sim->ens.r[ipoly].r[ibead].r[idim];
 
-      sim->ens.r[ipoly].r[ibead].r[idim] =
-        f(sim->ens.r[ipoly].r[ibead].r[idim] + x, sim->ens.length);
-    }
+        sim->ens.r[ipoly].r[ibead].r[idim] =
+          fp_uwrap(sim->ens.r[ipoly].r[ibead].r[idim] + x, sim->ens.length);
+      }
+    else
+      for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead) {
+        sim->cache.cmd.r.r[ibead].r[idim] =
+          sim->ens.r[ipoly].r[ibead].r[idim];
+
+        sim->ens.r[ipoly].r[ibead].r[idim] =
+          sim->ens.r[ipoly].r[ibead].r[idim] + x;
+      }
   }
 }
 
@@ -833,9 +840,6 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   size_t const nbin = hist_nbin(sim->raddist);
 
-  double const c = hist_length(sim->raddist) /
-    fp_ball_volume(hist_length(sim->raddist), sim->ens.nmemb.dim);
-
   for (size_t ibin = 0; ibin < nbin; ++ibin) {
     double r0;
     hist_funbin(sim->raddist, &r0, ibin);
@@ -849,8 +853,7 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r;
     hist_unbin(sim->raddist, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r,
-          c * hist_normhits(sim->raddist, ibin) / v) < 0)
+    if (fprintf(fp, "%g %g\n", r, hist_hits(sim->raddist, ibin) / v) < 0)
       return false;
   }
 
