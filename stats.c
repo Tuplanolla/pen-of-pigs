@@ -82,7 +82,7 @@ size_t stats_n(struct stats const* const stats) {
 double stats_mean(struct stats const* const stats) {
   switch (stats->nmemb) {
     case 0:
-      return NAN;
+      return (double) NAN;
     default:
       return stats->m1;
   }
@@ -91,7 +91,7 @@ double stats_mean(struct stats const* const stats) {
 double stats_var(struct stats const* const stats) {
   switch (stats->nmemb) {
     case 0:
-      return NAN;
+      return (double) NAN;
     case 1:
       return 0.0;
     default:
@@ -102,7 +102,7 @@ double stats_var(struct stats const* const stats) {
 double stats_sd(struct stats const* const stats) {
   switch (stats->nmemb) {
     case 0:
-      return NAN;
+      return (double) NAN;
     case 1:
       return 0.0;
     default:
@@ -113,7 +113,7 @@ double stats_sd(struct stats const* const stats) {
 double stats_sem(struct stats const* const stats) {
   switch (stats->nmemb) {
     case 0:
-      return NAN;
+      return (double) NAN;
     case 1:
       return 0.0;
     default:
@@ -123,14 +123,14 @@ double stats_sem(struct stats const* const stats) {
 
 double stats_autocorr(struct stats const* const stats, size_t const k) {
   if (stats->x == NULL)
-    return NAN;
+    return (double) NAN;
 
   double s = 0.0;
 
   switch (stats->nmemb) {
     case 0:
     case 1:
-      return NAN;
+      return (double) NAN;
     default:
       for (size_t i = k; i < stats->nmemb; ++i)
         s += (stats->x[i - k] - stats->m1) * (stats->x[i] - stats->m1);
@@ -142,14 +142,14 @@ double stats_autocorr(struct stats const* const stats, size_t const k) {
 
 double stats_corrtime_lag(struct stats const* const stats, size_t n) {
   if (stats->x == NULL)
-    return NAN;
+    return (double) NAN;
 
   double s = 0.0;
 
   switch (stats->nmemb) {
     case 0:
     case 1:
-      return NAN;
+      return (double) NAN;
     default:
       n = size_min(n, stats->nmemb);
 
@@ -171,11 +171,11 @@ double stats_corrtime(struct stats const* const stats) {
 
 double stats_corrsem(struct stats const* const stats) {
   if (stats->x == NULL)
-    return NAN;
+    return (double) NAN;
 
   switch (stats->nmemb) {
     case 0:
-      return NAN;
+      return (double) NAN;
     case 1:
       return 0.0;
     default:

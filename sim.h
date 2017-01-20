@@ -331,7 +331,6 @@ struct sim* sim_alloc(size_t, size_t, size_t, size_t,
     size_t, size_t, size_t, size_t, size_t,
     bool, bool, double, double, double);
 
-// The call `sim_run(sim)` is magic.
 __attribute__ ((__nonnull__))
 bool sim_run(struct sim*);
 

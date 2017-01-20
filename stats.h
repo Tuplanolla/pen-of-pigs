@@ -79,6 +79,7 @@ double stats_autocorr(struct stats const*, size_t);
 // if `stats` caches its samples.
 // Otherwise `NAN` is returned.
 // The time complexity is $O(n k)$ for $n$ samples and $k$ lag.
+__attribute__ ((__nonnull__, __pure__))
 double stats_corrtime_lag(struct stats const*, size_t);
 
 // The call `stats_corrtime(stats)` returns

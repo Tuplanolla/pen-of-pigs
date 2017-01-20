@@ -95,7 +95,7 @@ double hist_length(struct hist const*);
 // the product of the length of all the dimensions of the histogram `hist`.
 // The time complexity is $O(1)$.
 __attribute__ ((__nonnull__, __pure__))
-double hist_length(struct hist const*);
+double hist_volume(struct hist const*);
 
 // The call `hist_hits(hist, i)` returns
 // the hit count for bin `i` in the histogram `hist`.

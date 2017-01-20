@@ -15,8 +15,10 @@ static double potext_harm(struct ens const* const ens,
   return gsl_pow_2(omega) * ens_norm2(ens, r) / 2.0;
 }
 
-static double const epsilon = 10.22;
-static double const sigma = 2.556;
+// 14.03e-23 \joule = 3.2181e-5 \hartree
+static double const epsilon = 3.218e-5;
+// 2.56 \angstrom = 4.8377 \bohr
+static double const sigma = 4.838;
 
 __attribute__ ((__nonnull__, __pure__))
 static double pot_lj612(struct ens const* const ens,
@@ -126,10 +128,6 @@ int main(int const argc, char** const argv) {
   switch (isys) {
     case 0:
       {
-        double const q = omega / 2.0;
-        double const e = (double) ndim * q;
-        (void) printf("Expected for QHO: E = %f\n", e);
-
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
             false, false, length, mass, tau);
@@ -138,6 +136,10 @@ int main(int const argc, char** const argv) {
 
           return EXIT_FAILURE;
         }
+
+        double const q = omega / 2.0;
+        double const e = (double) ndim * q;
+        (void) printf("Expected for QHO: E = %g.\n", e);
 
         sim_set_potext(sim, potext_harm);
 
@@ -153,9 +155,6 @@ int main(int const argc, char** const argv) {
       }
     case 1:
       {
-        double const en = -7.32;
-        (void) printf("Expected for He-4: E = %f (E / N = %f)\n", en * npoly, en);
-
         struct sim* const sim = sim_alloc(ndim, npoly, nbead, nsubdiv, ndiv,
             nthrm, nprod, nthrmrec, nprodrec,
             false, true, length, mass, tau);
@@ -165,10 +164,13 @@ int main(int const argc, char** const argv) {
           return EXIT_FAILURE;
         }
 
-        // TODO Disable this to find the normalization constant.
+        // Disable this temporarily
+        // to find the radial distribution function normalization constant.
         sim_set_potint(sim, pot_lj612);
         sim_place_lattice(sim, sim_placer_point, NULL);
-        // sim_place_file(sim, NULL, "run-2017-01-15-02-45-00-ffef1344/polys.data");
+        // Enable this temporarily
+        // to start from the end of the previous simulation.
+        // sim_place_file(sim, NULL, "run-latest/polys.data");
 
         if (!sim_run(sim)) {
           (void) fprintf(stderr, "Failed to run simulation.\n");

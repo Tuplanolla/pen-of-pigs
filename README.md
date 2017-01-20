@@ -7,7 +7,7 @@ it is primarily intended for pedagogical purposes.
 Clarity and conciseness of the presentation are favored
 over numerical stability and performance tricks.
 If you would prefer something with the opposite design goals,
-see [PIMC++][pimcpp] by Clark, Esler and Brown instead.
+see [WA-PIMC][wa-pimc] by Adrian Del Maestro instead.
 
 ## Overview
 
@@ -87,7 +87,7 @@ Read the source code.
 It is not scary.
 I promise.
 
-[pimcpp]: https://github.com/bkclark/pimcpp
+[wa-pimc]: http://code.delmaestro.org/
 [gsl]: https://www.gnu.org/software/gsl/
 [debian]: https://www.debian.org/
 [gnuplot]: http://gnuplot.sourceforge.net/

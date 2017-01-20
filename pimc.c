@@ -122,7 +122,7 @@ int main(int const argc, char** const argv) {
 
         double const q = omega / 2.0;
         double const e = (double) ndim * q / tanh(q * beta);
-        (void) printf("Expected for QHO: E = %f (T = %f)\n", e, temp);
+        (void) printf("Expected for QHO: E = %g (T = %g).\n", e, temp);
 
         sim_set_potext(sim, potext_harm);
 

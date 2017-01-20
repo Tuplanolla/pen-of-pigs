@@ -301,7 +301,7 @@ double sim_est_thermal(struct sim const* const sim,
   return sim->ens.symmetric ?
     ens_kindf(&sim->ens) -
     (ens_kin_total(&sim->ens) - ens_pot_total(&sim->ens)) /
-    (double) sim->ens.nmemb.bead : NAN;
+    (double) sim->ens.nmemb.bead : (double) NAN;
 }
 
 double sim_est_mixed(struct sim const* const sim, void const* const p) {
@@ -318,7 +318,7 @@ double sim_est_virial(struct sim const* const sim, void const* const p) {
   size_t ibead = *(size_t const*) p;
 
   if (ibead == 0)
-    return NAN;
+    return (double) NAN;
 
   --ibead;
 
@@ -326,10 +326,16 @@ double sim_est_virial(struct sim const* const sim, void const* const p) {
   for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly) {
     double const sigma = sqrt(sim->ens.epsilon / sim->ens.r[ipoly].mass);
 
-    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim)
-      r[ipoly].r[idim] = (sim->ens.r[ipoly].r[ibead].r[idim] +
-          sim->ens.r[ipoly].r[ibead + 1].r[idim]) / 2 +
-        gsl_ran_gaussian(sim->rng, sigma);
+    for (size_t idim = 0; idim < sim->ens.nmemb.dim; ++idim) {
+      double const x = sim->ens.r[ipoly].r[ibead].r[idim];
+      double const y = sim->ens.r[ipoly].r[ibead + 1].r[idim];
+
+      if (sim->ens.periodic)
+        r[ipoly].r[idim] = fp_uwrap(x + fp_swrap(y - x, sim->ens.length) / 2 +
+          gsl_ran_gaussian(sim->rng, sigma), sim->ens.length);
+      else
+        r[ipoly].r[idim] = (x + y) / 2 + gsl_ran_gaussian(sim->rng, sigma);
+    }
   }
 
   double k = 0.0;
@@ -510,7 +516,7 @@ void sim_place_file(struct sim* const sim,
             size_t const idim = icol - 1;
 
             if (errno != 0 || endptr == buf)
-              sim->ens.r[ipoly].r[ibead].r[idim] = NAN;
+              sim->ens.r[ipoly].r[ibead].r[idim] = (double) NAN;
             else
               sim->ens.r[ipoly].r[ibead].r[idim] = y;
           }
@@ -853,7 +859,8 @@ bool print_raddist(struct sim const* const sim, FILE* const fp,
     double r;
     hist_unbin(sim->raddist, &r, ibin);
 
-    if (fprintf(fp, "%g %g\n", r, hist_hits(sim->raddist, ibin) / v) < 0)
+    if (fprintf(fp, "%g %g\n",
+          r, (double) hist_hits(sim->raddist, ibin) / v) < 0)
       return false;
   }
 
@@ -898,9 +905,8 @@ bool print_polys(struct sim const* const sim, FILE* const fp,
 bool print_progress(struct sim const* const sim, FILE* const fp,
     __attribute__ ((__unused__)) void const* const p) {
   if (fprintf(fp,
-        "i_T / n_T + i_P / n_P = %zu / %zu + %zu / %zu = %zu %% + %zu %%\n",
-        sim->ens.istep.thrm, sim->ens.nstep.thrm,
-        sim->ens.istep.prod, sim->ens.nstep.prod,
+        "Simulation '%s' is at %zu %% thrm and %zu %% prod...\n",
+        sim->id,
         sim->ens.nstep.thrm == 0 ? 100 :
         100 * sim->ens.istep.thrm / sim->ens.nstep.thrm,
         sim->ens.nstep.prod == 0 ? 100 :
@@ -1167,18 +1173,18 @@ bool sim_run(struct sim* const sim) {
     } else {
       if (sim->ens.nstep.prodrec * sim->ens.istep.prod >
           sim->ens.nstep.prod * sim->ens.istep.prodrec) {
-        size_t const ibead = sim->ens.nmemb.bead / 2;
+        size_t const jbead = sim->ens.nmemb.bead / 2;
 
-        (void) stats_accum(sim->thermal, sim_est_thermal(sim, &ibead));
-        (void) stats_accum(sim->mixed, sim_est_mixed(sim, &ibead));
-        (void) stats_accum(sim->virial, sim_est_virial(sim, &ibead));
+        (void) stats_accum(sim->thermal, sim_est_thermal(sim, &jbead));
+        (void) stats_accum(sim->mixed, sim_est_mixed(sim, &jbead));
+        (void) stats_accum(sim->virial, sim_est_virial(sim, &jbead));
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
           if (sim->ens.symmetric)
             for (size_t ibead = 0; ibead < sim->ens.nmemb.bead; ++ibead)
               (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
           else
-            (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[ibead].r);
+            (void) hist_accum(sim->posdist, sim->ens.r[ipoly].r[jbead].r);
 
         for (size_t ipoly = 0; ipoly < sim->ens.nmemb.poly; ++ipoly)
           for (size_t jpoly = ipoly + 1; jpoly < sim->ens.nmemb.poly; ++jpoly)
@@ -1191,7 +1197,7 @@ bool sim_run(struct sim* const sim) {
               }
             else {
               double const d = ens_dist(&sim->ens,
-                  &sim->ens.r[ipoly].r[ibead], &sim->ens.r[jpoly].r[ibead]);
+                  &sim->ens.r[ipoly].r[jbead], &sim->ens.r[jpoly].r[jbead]);
 
               (void) hist_accum(sim->raddist, &d);
             }
