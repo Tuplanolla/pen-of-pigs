@@ -1230,9 +1230,6 @@ bool sim_run(struct sim* const sim) {
   if (!sim_save_mut(sim))
     err_abort(sim_save_mut);
 
-  if (!print_progress(sim, stdout, NULL))
-    err_abort(print_progress);
-
   if (!print_wrong_results_fast(sim, stdout, NULL))
     err_abort(print_wrong_results_fast);
 

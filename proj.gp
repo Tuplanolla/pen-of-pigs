@@ -1,7 +1,9 @@
 set terminal epslatex
 set output 'proj.tex'
-periodic = `cat 'run-latest/periodic.data'`
-L = `cat 'run-latest/length.data'`
+stats 'run-latest/periodic.data' using 1 name 'stats_periodic'
+periodic = stats_periodic_mean
+stats 'run-latest/length.data' using 1 name 'stats_L'
+L = stats_L_mean
 set xlabel '$x$'
 set ylabel '$\tau$'
 unset key

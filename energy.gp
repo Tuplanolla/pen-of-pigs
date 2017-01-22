@@ -1,8 +1,11 @@
 set terminal epslatex
 set output 'energy.tex'
-C_T = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 1`
-C_M = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 2`
-C_V = `cat 'run-latest/corrtime.data' | cut -d ' ' -f 3`
+stats 'run-latest/corrtime.data' using 1 name 'stats_C_T'
+C_T = stats_C_T_mean
+stats 'run-latest/corrtime.data' using 2 name 'stats_C_M'
+C_M = stats_C_M_mean
+stats 'run-latest/corrtime.data' using 3 name 'stats_C_V'
+C_V = stats_C_V_mean
 set xlabel '$i$'
 set ylabel '$E / N$'
 set autoscale xfix

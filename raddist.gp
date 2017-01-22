@@ -1,8 +1,10 @@
 set terminal epslatex
 set output 'raddist.tex'
-N = `cat 'run-latest/npoly.data'`
+stats 'run-latest/npoly.data' using 1 name 'stats_N'
+N = stats_N_mean
 if (N < 2) {exit}
-L = `cat 'run-latest/length.data'`
+stats 'run-latest/length.data' using 1 name 'stats_L'
+L = stats_L_mean
 set xlabel '$r$'
 set ylabel '$g$'
 unset key

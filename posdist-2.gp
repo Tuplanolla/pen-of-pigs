@@ -1,10 +1,14 @@
 set terminal epslatex
 set output 'posdist-2.tex'
-d = `cat 'run-latest/ndim.data'`
+stats 'run-latest/ndim.data' using 1 name 'stats_d'
+d = stats_d_mean
 if (d != 2) {exit}
-periodic = `cat 'run-latest/periodic.data'`
-L = `cat 'run-latest/length.data'`
-K = `cat 'run-latest/nsubdiv.data'`
+stats 'run-latest/periodic.data' using 1 name 'stats_periodic'
+periodic = stats_periodic_mean
+stats 'run-latest/length.data' using 1 name 'stats_L'
+L = stats_L_mean
+stats 'run-latest/nsubdiv.data' using 1 name 'stats_K'
+K = stats_K_mean
 set xlabel '$x$'
 set ylabel '$y$'
 set zlabel '$p$'
