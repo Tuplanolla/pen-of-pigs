@@ -5,8 +5,8 @@
 *.pdf
 *.tar.gz
 *.tex
-/clang-*
-/gcc-*
+/clang*
+/gcc*
 /pigs
 /pimc
-/run-*
+/*run*

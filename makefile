@@ -49,9 +49,12 @@ check: build
 	-s qho -d 2 -N 8 -M 16 -k 4 -K 32 -h 256 -p 512 -H 64 -P 128 \
 	-L 8.0 -m 1.0 -T 0.125
 
-clean: shallow-clean
-	$(RM) pigs pimc run-current run-latest
+deep-clean: clean
+	$(RM) run-current run-latest
 	$(RM) -r run-*
+
+clean: shallow-clean
+	$(RM) pigs pimc
 	$(RM) *.eps *.tex plots.pdf
 
 shallow-clean:

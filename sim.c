@@ -296,6 +296,8 @@ double ens_pot_total(struct ens const* const ens) {
   return v;
 }
 
+// TODO Make sure these estimators work correctly for many-particle systems.
+
 double sim_est_thermal(struct sim const* const sim,
     __attribute__ ((__unused__)) void const* const p) {
   return sim->ens.symmetric ?
