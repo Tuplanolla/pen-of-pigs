@@ -63,7 +63,8 @@ The available targets are
 * `check` to check the program for memory leaks and other potential problems,
 * `build` to compile the program,
 * `plot` to render visualizations,
-* `clean` to remove all generated files and
+* `deep-clean` to remove all generated files (including runs),
+* `clean` to remove all quickly generated files (excluding runs) and
 * `shallow-clean` to remove only unimportant generated files.
 
 The supported compilers (`CC`) are
