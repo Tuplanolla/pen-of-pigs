@@ -14,7 +14,7 @@ see [WA-PIMC][wa-pimc] by Adrian Del Maestro instead.
 Pen of PIGS was written by Sampsa "Tuplanolla" Kiiskinen
 to support his bachelor's thesis on quantum statistical mechanics.
 Even though the project was in the works for a while,
-the bulk of the work happened between 2016-11-01 and 2017-01-01.
+the bulk of the work happened between 2016-11-01 and 2017-01-23.
 
 ## License
 
